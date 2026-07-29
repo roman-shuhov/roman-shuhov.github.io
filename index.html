@@ -168,17 +168,32 @@
   .prompt-row { display: flex; align-items: baseline; gap: 0; }
   .ps1 { color: var(--green-dim); white-space: nowrap; }
   .ps1 b { color: var(--green); font-weight: 700; }
+  .prompt-row { flex-wrap: wrap; }
+  .edit { flex: 1; min-width: 0; }
   #cmd {
-    flex: 1;
-    background: transparent;
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
     border: none;
-    outline: none;
-    color: var(--green-bright);
-    font-family: var(--mono);
-    font-size: 14px;
-    caret-color: var(--green);
-    padding: 0 0 0 2px;
+    padding: 0;
+    pointer-events: none;
   }
+  .echo {
+    color: var(--green-bright);
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .cursor-block {
+    display: inline-block;
+    width: 0.6em;
+    height: 0.85em;
+    background: var(--green);
+    vertical-align: -0.08em;
+    box-shadow: 0 0 8px rgba(0, 255, 65, 0.55);
+    animation: blink 1.1s steps(1) infinite;
+  }
+  .cursor-block.idle { animation: none; opacity: 0.35; }
   .term-body::-webkit-scrollbar { width: 8px; }
   .term-body::-webkit-scrollbar-thumb { background: var(--green-faint); border-radius: 4px; }
 
@@ -251,6 +266,7 @@
   @media (prefers-reduced-motion: reduce) {
     h1.glitch::before, h1.glitch::after { animation: none; opacity: 0; }
     .tagline .blink { animation: none; }
+    .cursor-block { animation: none; }
     .card { transition: none; }
     html { scroll-behavior: auto; }
   }
@@ -570,19 +586,45 @@ function spawnPrompt() {
   const row = document.createElement('div');
   row.className = 'line prompt-row';
   row.innerHTML = PS1;
+
+  const echoPre = document.createElement('span');
+  const echoPost = document.createElement('span');
+  echoPre.className = 'echo';
+  echoPost.className = 'echo';
+  const cursor = document.createElement('span');
+  cursor.className = 'cursor-block';
+  cursor.setAttribute('aria-hidden', 'true');
+
   inputEl = document.createElement('input');
   inputEl.id = 'cmd';
   inputEl.setAttribute('aria-label', 'terminal command input');
   inputEl.setAttribute('autocapitalize', 'off');
   inputEl.setAttribute('autocomplete', 'off');
   inputEl.setAttribute('spellcheck', 'false');
-  row.appendChild(inputEl);
+
+  const edit = document.createElement('span');
+  edit.className = 'edit';
+  edit.append(echoPre, cursor, echoPost);
+  row.append(edit, inputEl);
   out.appendChild(row);
   scrollBottom();
+
+  const renderEcho = () => {
+    const v = inputEl.value;
+    const pos = inputEl.selectionStart != null ? inputEl.selectionStart : v.length;
+    echoPre.textContent = v.slice(0, pos);
+    echoPost.textContent = v.slice(pos);
+  };
+  inputEl.addEventListener('input', renderEcho);
+  inputEl.addEventListener('keyup', renderEcho);
+  document.addEventListener('selectionchange', renderEcho);
+  inputEl.addEventListener('focus', () => cursor.classList.remove('idle'));
+  inputEl.addEventListener('blur', () => cursor.classList.add('idle'));
 
   inputEl.addEventListener('keydown', async e => {
     if (e.key === 'Enter') {
       const val = inputEl.value;
+      document.removeEventListener('selectionchange', renderEcho);
       row.innerHTML = PS1 + '<span class="bright">' + esc(val) + '</span>';
       if (val.trim()) { history.push(val); }
       histIdx = history.length;
@@ -591,13 +633,14 @@ function spawnPrompt() {
       spawnPrompt();
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      if (histIdx > 0) { histIdx--; inputEl.value = history[histIdx] || ''; }
+      if (histIdx > 0) { histIdx--; inputEl.value = history[histIdx] || ''; renderEcho(); }
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
-      if (histIdx < history.length) { histIdx++; inputEl.value = history[histIdx] || ''; }
+      if (histIdx < history.length) { histIdx++; inputEl.value = history[histIdx] || ''; renderEcho(); }
     }
   });
   inputEl.focus({ preventScroll: true });
+  if (document.activeElement !== inputEl) cursor.classList.add('idle');
 }
 
 // clicking anywhere on the terminal focuses the prompt (mobile keyboards included)

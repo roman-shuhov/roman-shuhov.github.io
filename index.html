@@ -206,7 +206,7 @@
     text-transform: uppercase;
   }
   .sec-head b { color: var(--green); }
-  .cards { display: grid; grid-template-columns: minmax(0, 480px); gap: 14px; margin-bottom: 56px; }
+  .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 56px; }
   .card {
     display: block;
     background: var(--panel);
@@ -301,6 +301,11 @@
         <p>Sankey diagram studio for income statements. Ledger-line syntax in, publication-ready flow charts out.</p>
         <span class="badge online">online</span>
       </a>
+      <a class="card" href="/colony/" rel="noopener">
+        <h3>colony</h3>
+        <p>An idle game with no clicking. Your termites are dumb — you write their instincts, top-down, first match wins.</p>
+        <span class="badge online">playable</span>
+      </a>
     </div>
   </section>
 
@@ -308,6 +313,7 @@
     <p class="sec-head" id="uplink-head">== <b>uplink</b> ==</p>
     <p class="row">github&nbsp;&nbsp;→ <a href="https://github.com/roman-shuhov" rel="noopener">github.com/roman-shuhov</a></p>
     <p class="row">charts&nbsp;&nbsp;→ <a href="https://chart.termit.dev" rel="noopener">chart.termit.dev</a></p>
+    <p class="row">colony&nbsp;&nbsp;→ <a href="/colony/">termit.dev/colony</a></p>
   </section>
 
   <footer>
@@ -503,6 +509,7 @@ const COMMANDS = {
     addLine('<span class="dim">available commands:</span>');
     addLine('  <span class="bright">ls</span>          list ~/projects');
     addLine('  <span class="bright">chart</span>       open the sankey studio');
+    addLine('  <span class="bright">play</span>        write instincts for a termite colony');
     addLine('  <span class="bright">github</span>      the code lives here');
     addLine('  <span class="bright">uname</span> -a    system info');
     addLine('  <span class="bright">matrix</span>      toggle the rain');
@@ -510,10 +517,15 @@ const COMMANDS = {
     addLine('  <span class="dim">…and a few that aren\u2019t listed. rabbit holes exist.</span>');
   },
   ls() {
-    addLine('<span class="bright">diagram/</span>');
+    addLine('<span class="bright">diagram/</span>  <span class="bright">colony/</span>');
   },
   chart() {
     addLine('→ <a href="https://chart.termit.dev" rel="noopener">https://chart.termit.dev</a> <span class="dim">// sankey diagram studio</span>');
+  },
+  async play() {
+    await typeLine('<span class="dim">waking the colony…</span>', 22);
+    addLine('→ <a href="/colony/">termit.dev/colony</a> <span class="dim">// they take orders, not initiative</span>');
+    setTimeout(() => { location.href = '/colony/'; }, 1200);
   },
   github() {
     addLine('→ <a href="https://github.com/roman-shuhov" rel="noopener">https://github.com/roman-shuhov</a>');
@@ -566,7 +578,8 @@ const COMMANDS = {
   },
   rm() { addLine('<span class="err">nice try.</span>'); }
 };
-const ALIASES = { 'll': 'ls', 'ls projects': 'ls', 'open chart': 'chart', 'diagram': 'chart', 'uname -a': 'uname', 'термит': 'termit', 'ants': 'termit' };
+const ALIASES = { 'll': 'ls', 'ls projects': 'ls', 'open chart': 'chart', 'diagram': 'chart', 'uname -a': 'uname', 'термит': 'termit', 'ants': 'termit',
+                  'colony': 'play', 'game': 'play', './colony': 'play' };
 
 function esc(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

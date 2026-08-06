@@ -1,0 +1,1413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PROBE — packet inspector · termit.dev</title>
+<meta name="description" content="Open a pcap, see every header field laid out as an RFC diagram, or build a packet from a template. Runs entirely in the browser.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23050805'/%3E%3Crect x='3' y='7' width='26' height='5' fill='%234f7dd9'/%3E%3Crect x='3' y='14' width='26' height='5' fill='%2300ff41'/%3E%3Crect x='3' y='21' width='18' height='5' fill='%23ffb000'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #050805;
+    --panel: #0a120c;
+    --panel-2: #071009;
+    --line: #103d22;
+    --green: #00ff41;
+    --dim: #1e9e5c;
+    --faint: #0f5c33;
+    --bright: #b4ffcd;
+    --amber: #ffb000;
+    --red: #ff5c5c;
+    --l2: #5b8ce6;
+    --l3: #00ff41;
+    --l4: #ffb000;
+    --l5: #c07de8;
+    --pay: #7d8a83;
+    --meta: #7a94a8;
+    --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--green); font-family: var(--mono); font-size: 13px; line-height: 1.55; }
+  ::selection { background: var(--green); color: #031007; }
+  .scanlines { position: fixed; inset: 0; z-index: 60; pointer-events: none;
+    background: repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0, rgba(0,0,0,0) 2px, rgba(0,0,0,.15) 3px);
+    mix-blend-mode: multiply; }
+
+  header { border-bottom: 1px solid var(--line); background: var(--panel-2);
+    padding: 10px 16px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .logo { font-weight: 800; font-size: 16px; color: var(--bright); letter-spacing: .12em; }
+  .logo small { color: var(--dim); font-weight: 400; font-size: 11px; letter-spacing: 0; margin-left: 8px; }
+  header .sp { flex: 1; }
+  .pill { font-size: 11px; color: var(--dim); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; }
+  .pill.warn { color: var(--amber); border-color: #4a3a12; }
+
+  .bar { display: flex; gap: 6px; padding: 10px 16px; flex-wrap: wrap; align-items: center; border-bottom: 1px solid var(--line); }
+  .btn { background: transparent; border: 1px solid var(--line); color: var(--green); font-family: var(--mono);
+    font-size: 11.5px; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+  .btn:hover:not(:disabled) { border-color: var(--green); background: rgba(0,255,65,.08); }
+  .btn.on { background: rgba(0,255,65,.14); border-color: var(--green); }
+  .btn:disabled { opacity: .35; cursor: not-allowed; }
+  .btn.amber { color: var(--amber); }
+  .btn.amber:hover:not(:disabled) { border-color: var(--amber); background: rgba(255,176,0,.1); }
+  .bar .lbl { color: var(--faint); font-size: 11px; }
+  select, input[type=text] { background: #061008; border: 1px solid var(--line); color: var(--bright);
+    font-family: var(--mono); font-size: 11.5px; padding: 6px 8px; border-radius: 6px; }
+  select:focus, input:focus, textarea:focus { outline: none; border-color: var(--green); }
+
+  main { display: grid; grid-template-columns: 300px minmax(0,1fr); gap: 12px; padding: 12px 16px 40px; align-items: start; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  .panel h2 { font-size: 10.5px; font-weight: 500; letter-spacing: .2em; text-transform: uppercase;
+    color: var(--dim); padding: 9px 12px; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+  .panel .body { padding: 10px 12px; }
+  .scroll { max-height: 460px; overflow-y: auto; }
+  .scroll::-webkit-scrollbar { width: 7px; }
+  .scroll::-webkit-scrollbar-thumb { background: var(--faint); border-radius: 4px; }
+
+  /* packet list */
+  .plist { font-size: 11.5px; }
+  .prow { display: flex; gap: 7px; padding: 4px 10px; cursor: pointer; border-left: 2px solid transparent; white-space: nowrap; }
+  .prow:hover { background: rgba(0,255,65,.06); }
+  .prow.on { background: rgba(0,255,65,.12); border-left-color: var(--green); }
+  .prow .n { color: var(--faint); width: 34px; text-align: right; flex: none; }
+  .prow .i { color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
+  .prow.on .i { color: var(--bright); }
+
+  /* template form */
+  .frm { display: grid; grid-template-columns: 96px 1fr; gap: 6px 8px; align-items: center; }
+  .frm label { color: var(--faint); font-size: 11px; }
+  .frm input, .frm select { width: 100%; }
+  .frm .full { grid-column: 1 / -1; }
+
+  /* bit diagram */
+  .diagram { padding: 10px 12px 14px; overflow-x: auto; }
+  .ruler { display: grid; grid-template-columns: repeat(32, 1fr); font-size: 9px; color: var(--faint);
+    min-width: 620px; margin-bottom: 3px; }
+  .ruler span { text-align: center; }
+  .drow { display: grid; grid-template-columns: repeat(32, 1fr); min-width: 620px; margin-bottom: 3px; }
+  .cell { border: 1px solid var(--line); border-radius: 3px; padding: 3px 2px; margin-right: 2px;
+    font-size: 10.5px; text-align: center; overflow: hidden; white-space: nowrap; cursor: pointer;
+    background: rgba(255,255,255,.015); }
+  .cell:hover, .cell.on { background: rgba(0,255,65,.14); }
+  .cell .fn { color: var(--faint); font-size: 9px; display: block; line-height: 1.25; }
+  .cell .fv { color: var(--bright); display: block; line-height: 1.3; }
+  .layer-tabs { display: flex; gap: 4px; padding: 8px 12px 0; flex-wrap: wrap; }
+  .ltab { font-size: 11px; padding: 4px 10px; border-radius: 6px 6px 0 0; border: 1px solid var(--line);
+    border-bottom: none; background: var(--panel-2); color: var(--dim); cursor: pointer; font-family: var(--mono); }
+  .ltab.on { color: #050805; font-weight: 700; }
+
+  /* field tree */
+  .tree { font-size: 11.5px; }
+  .lyr { margin-bottom: 8px; }
+  .lyr .lh { padding: 4px 8px; border-radius: 5px; font-weight: 700; font-size: 11.5px; margin-bottom: 3px; }
+  .fld { display: grid; grid-template-columns: 26px 168px 1fr; gap: 8px; padding: 2px 8px; align-items: center; border-radius: 4px; }
+  .fld:hover, .fld.on { background: rgba(0,255,65,.09); }
+  .fld .o { color: var(--faint); font-size: 10.5px; text-align: right; }
+  .fld .k { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fld .v { color: var(--bright); display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .fld .v input { background: #061008; border: 1px solid var(--line); border-radius: 4px; color: var(--bright);
+    font-family: var(--mono); font-size: 11px; padding: 1px 5px; width: 100%; max-width: 250px; }
+  .fld .hint { color: var(--faint); font-size: 10.5px; white-space: nowrap; }
+  .fld .bad { color: var(--red); }
+  .fld .ok { color: var(--dim); }
+
+  /* hex grid */
+  .hex { font-size: 12px; line-height: 1.5; padding: 10px 12px; overflow-x: auto; white-space: pre; }
+  .hex .off { color: var(--faint); }
+  .hex b { font-weight: 400; cursor: pointer; border-radius: 2px; }
+  .hex b.on { background: var(--bright); color: #050805 !important; }
+  .grid2 { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,420px); gap: 12px; align-items: start; }
+  @media (max-width: 1180px) { .grid2 { grid-template-columns: 1fr; } }
+
+  .drop { border: 1px dashed var(--faint); border-radius: 9px; padding: 20px; text-align: center;
+    color: var(--faint); font-size: 12px; margin-bottom: 12px; }
+  .drop.hot { border-color: var(--green); color: var(--green); background: rgba(0,255,65,.05); }
+  textarea { width: 100%; height: 110px; background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 8px; color: var(--bright); font-family: var(--mono); font-size: 11.5px; padding: 8px 10px; resize: vertical; }
+  footer { color: var(--faint); font-size: 11px; text-align: center; padding: 6px 16px 28px; }
+  footer a { color: var(--dim); }
+  .note { color: var(--faint); font-size: 11px; margin-top: 8px; }
+  .note b { color: var(--dim); font-weight: 400; }
+</style>
+</head>
+<body>
+<div class="scanlines"></div>
+
+<header>
+  <div class="logo">PROBE<small>packet inspector &amp; builder · termit.dev</small></div>
+  <div class="sp"></div>
+  <span class="pill" id="p-src">no packet</span>
+  <span class="pill" id="p-len">0 bytes</span>
+</header>
+
+<div class="bar">
+  <input type="file" id="file" accept=".pcap,.pcapng,.cap,.dmp" style="display:none">
+  <button class="btn" id="b-open">open .pcap / .pcapng</button>
+  <button class="btn" id="b-hex">paste hex</button>
+  <button class="btn" id="b-td">paste tcpdump</button>
+  <span class="lbl" style="margin-left:8px">template</span>
+  <select id="tmpl">
+    <option value="">—</option>
+    <option value="dns">DNS query</option>
+    <option value="udp">minimal UDP</option>
+    <option value="tcp">TCP SYN</option>
+    <option value="icmp">ICMP echo</option>
+  </select>
+  <select id="fam"><option value="4">IPv4</option><option value="6">IPv6</option></select>
+  <div style="flex:1"></div>
+  <button class="btn amber" id="b-fix">recompute lengths &amp; checksums</button>
+  <button class="btn" id="b-copy">copy hex</button>
+  <button class="btn" id="b-save">download .pcap</button>
+</div>
+
+<main>
+  <div>
+    <div class="panel" id="side-list" style="display:none; margin-bottom:12px">
+      <h2>capture <span id="cap-n"></span></h2>
+      <div class="plist scroll" id="plist"></div>
+    </div>
+    <div class="panel" id="side-tmpl" style="display:none; margin-bottom:12px">
+      <h2>template</h2>
+      <div class="body"><div class="frm" id="tform"></div></div>
+    </div>
+    <div class="panel">
+      <h2>layers</h2>
+      <div class="body" id="stack" style="font-size:11.5px"></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="drop" id="drop">drop a <b>.pcap</b> or <b>.pcapng</b> here — it is parsed in this tab and never uploaded</div>
+
+    <div class="panel" id="hexbox" style="display:none; margin-bottom:12px">
+      <h2 id="hexhead">paste hex</h2>
+      <div class="body">
+        <textarea id="hextext" spellcheck="false"></textarea>
+        <div style="margin-top:8px; display:flex; gap:6px; align-items:center; flex-wrap:wrap">
+          <select id="hexlink">
+            <option value="auto">work out the framing</option>
+            <option value="1">starts with Ethernet</option>
+            <option value="101">starts with IP</option>
+            <option value="258">starts with a PKTAP header</option>
+            <option value="113">starts with Linux SLL</option>
+          </select>
+          <button class="btn" id="b-hexgo">read bytes</button>
+          <span class="note" id="hexnote"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:12px">
+      <h2>header diagram</h2>
+      <div class="layer-tabs" id="ltabs"></div>
+      <div class="diagram" id="diagram"></div>
+    </div>
+
+    <div class="grid2">
+      <div class="panel">
+        <h2>fields</h2>
+        <div class="body tree scroll" id="tree"></div>
+      </div>
+      <div class="panel">
+        <h2>bytes</h2>
+        <div class="hex scroll" id="hexview"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  everything happens in this tab — no capture is uploaded ·
+  browsers cannot sniff live traffic, so bring a file or build one · <a href="/">termit.dev</a>
+</footer>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const hx = (n, w) => n.toString(16).padStart(w || 2, '0');
+
+/* ============================================================
+   packet state
+   ============================================================ */
+const P = {
+  bytes: new Uint8Array(0),
+  linktype: 1,
+  layers: [],
+  capture: null,        // {packets:[{bytes,ts,linktype}], name}
+  sel: -1,
+  selField: null,
+  selLayer: 0,
+  template: '',
+  fam: 4
+};
+
+const LCOL = { meta: '#7a94a8', l2: '#5b8ce6', l3: '#00ff41', l4: '#ffb000', l5: '#c07de8', pay: '#7d8a83' };
+
+/* ============================================================
+   checksums
+   ============================================================ */
+function onesFold(sum) { while (sum >>> 16) sum = (sum & 0xffff) + (sum >>> 16); return sum; }
+function sumRange(buf, start, len, init) {
+  let sum = init || 0;
+  let i = start;
+  const end = start + len;
+  for (; i + 1 < end; i += 2) sum += (buf[i] << 8) | buf[i+1];
+  if (i < end) sum += buf[i] << 8;
+  return sum;
+}
+function checksum(buf, start, len, init) { return (~onesFold(sumRange(buf, start, len, init))) & 0xffff; }
+
+function pseudoV4(buf, ipOff, proto, l4Off, l4Len) {
+  let sum = sumRange(buf, ipOff + 12, 8, 0);      // src + dst
+  sum += proto + l4Len;
+  return onesFold(sum);
+}
+function pseudoV6(buf, ipOff, proto, l4Len) {
+  let sum = sumRange(buf, ipOff + 8, 32, 0);      // src + dst
+  sum += (l4Len >>> 16) + (l4Len & 0xffff) + proto;
+  return onesFold(sum);
+}
+
+/* ============================================================
+   dissectors
+   ============================================================ */
+const ETHERTYPE = { 0x0800: 'IPv4', 0x0806: 'ARP', 0x86dd: 'IPv6', 0x8100: '802.1Q', 0x88cc: 'LLDP' };
+const IPPROTO = { 1: 'ICMP', 2: 'IGMP', 6: 'TCP', 17: 'UDP', 41: 'IPv6', 47: 'GRE', 50: 'ESP', 58: 'ICMPv6', 89: 'OSPF', 132: 'SCTP' };
+const DNSTYPE = { 1:'A', 2:'NS', 5:'CNAME', 6:'SOA', 12:'PTR', 15:'MX', 16:'TXT', 28:'AAAA', 33:'SRV', 41:'OPT', 65:'HTTPS' };
+const DNSRCODE = { 0:'NOERROR', 1:'FORMERR', 2:'SERVFAIL', 3:'NXDOMAIN', 4:'NOTIMP', 5:'REFUSED' };
+
+function mac(b, o) { return [0,1,2,3,4,5].map(i => hx(b[o+i])).join(':'); }
+function ip4(b, o) { return b[o] + '.' + b[o+1] + '.' + b[o+2] + '.' + b[o+3]; }
+function ip6(b, o) {
+  const g = [];
+  for (let i = 0; i < 16; i += 2) g.push(((b[o+i] << 8) | b[o+i+1]).toString(16));
+  // collapse the longest run of zero groups
+  let bi = -1, bl = 0, i = 0;
+  while (i < 8) {
+    if (g[i] === '0') { let j = i; while (j < 8 && g[j] === '0') j++; if (j - i > bl) { bl = j - i; bi = i; } i = j; }
+    else i++;
+  }
+  if (bl > 1) return (g.slice(0, bi).join(':') || '') + '::' + (g.slice(bi + bl).join(':') || '');
+  return g.join(':');
+}
+const u16 = (b, o) => (b[o] << 8) | b[o+1];
+const u32 = (b, o) => ((b[o] << 24) >>> 0) + (b[o+1] << 16) + (b[o+2] << 8) + b[o+3];
+
+function F(name, off, bitOff, bits, disp, opts) {
+  return Object.assign({ name, off, bitOff, bits, disp: String(disp) }, opts || {});
+}
+
+const u32le = (b, o) => ((b[o+3] << 24) >>> 0) + (b[o+2] << 16) + (b[o+1] << 8) + b[o];
+function cstr(b, o, n) {
+  let s = '';
+  for (let i = 0; i < n && o + i < b.length; i++) { const c = b[o+i]; if (!c) break; s += String.fromCharCode(c); }
+  return s;
+}
+
+// Apple's per-packet metadata header — tcpdump -k, or any pktap capture.
+// It sits in front of the real frame and carries the interface and the process.
+function pktapHeader(b, o) {
+  if (b.length < o + 32) return null;
+  const hl = u32le(b, o), dlt = u32le(b, o + 8);
+  if (hl < 32 || hl > 512 || o + hl >= b.length) return null;
+  if (![0, 1, 12, 101, 113].includes(dlt)) return null;
+  return {
+    len: hl, dlt,
+    typeNext: u32le(b, o + 4),
+    ifname: cstr(b, o + 12, 24),
+    flags: u32le(b, o + 36),
+    family: u32le(b, o + 40),
+    pre: u32le(b, o + 44),
+    post: u32le(b, o + 48),
+    pid: u32le(b, o + 52) | 0,
+    comm: cstr(b, o + 56, 17),
+    svc: u32le(b, o + 76),
+    iftype: (b[o+81] << 8) | b[o+80],
+    ifunit: (b[o+83] << 8) | b[o+82],
+    epid: u32le(b, o + 84) | 0,
+    ecomm: cstr(b, o + 88, 17),
+    flowid: u32le(b, o + 108),
+    ipproto: u32le(b, o + 112)
+  };
+}
+const AF = { 2: 'AF_INET', 30: 'AF_INET6' };
+const IFT = { 6: 'ethernet', 24: 'loopback', 55: 'cellular', 135: 'bridge', 144: 'utun' };
+function pktap(b, o, L) {
+  const h = pktapHeader(b, o);
+  if (!h) return { kind: 'raw', off: o };
+  const f = [
+    F('header length', o, 0, 32, h.len + ' bytes'),
+    F('type of next', o+4, 32, 32, h.typeNext === 1 ? '1  packet' : h.typeNext),
+    F('inner link type', o+8, 64, 32, h.dlt + (h.dlt === 1 ? '  Ethernet' : h.dlt === 101 ? '  raw IP' : '')),
+    F('interface', o+12, 96, 192, h.ifname || '—'),
+    F('flags', o+36, 288, 32, '0x' + hx(h.flags, 8)),
+    F('protocol family', o+40, 320, 32, h.family + (AF[h.family] ? '  ' + AF[h.family] : '')),
+    F('frame pre length', o+44, 352, 32, h.pre),
+    F('frame post length', o+48, 384, 32, h.post),
+    F('pid', o+52, 416, 32, h.pid),
+    F('process', o+56, 448, 136, h.comm || '—'),
+    F('service class', o+76, 608, 32, h.svc),
+    F('interface type', o+80, 640, 16, h.iftype + (IFT[h.iftype] ? '  ' + IFT[h.iftype] : '')),
+    F('interface unit', o+82, 656, 16, h.ifunit),
+    F('effective pid', o+84, 672, 32, h.epid),
+    F('effective process', o+88, 704, 136, h.ecomm || '—'),
+    F('flow id', o+108, 864, 32, '0x' + hx(h.flowid, 8)),
+    F('ip protocol', o+112, 896, 32, h.ipproto + (IPPROTO[h.ipproto] ? '  ' + IPPROTO[h.ipproto] : '')),
+    F('timestamp', o+116, 928, 64, new Date(u32le(b, o+116) * 1000).toISOString().replace('T',' ').slice(0,19)),
+    F('uuid', o+124, 992, 128, [...b.slice(o+124, o+140)].map(x=>hx(x)).join('')),
+    F('effective uuid', o+140, 1120, 128, [...b.slice(o+140, o+156)].map(x=>hx(x)).join(''))
+  ];
+  L.push({ name: 'PKTAP', start: o, len: h.len, fields: f, tier: 'meta',
+    summary: (h.ifname || '?') + ' · ' + (h.comm || 'unknown') + (h.pid ? ' (pid ' + h.pid + ')' : '') +
+             (h.ecomm && h.ecomm !== h.comm ? ' · for ' + h.ecomm + (h.epid ? ' (pid ' + h.epid + ')' : '') : '') });
+  const nx = o + h.len;
+  if (h.dlt === 1) return eth(b, nx, L);
+  return { kind: 'ip', off: nx };
+}
+
+function dissect(bytes, linktype) {
+  const L = [];
+  let off = 0, next = null;
+  try {
+    if (linktype === 1) { next = eth(bytes, 0, L); }
+    else if (linktype === 258) { next = pktap(bytes, 0, L); }
+    else if (linktype === 101) { next = { kind: 'ip', off: 0 }; }
+    else if (linktype === 113) {                              // Linux cooked
+      const f = [
+        F('packet type', 0, 0, 16, u16(bytes,0)),
+        F('link layer type', 2, 16, 16, u16(bytes,2)),
+        F('address length', 4, 32, 16, u16(bytes,4)),
+        F('address', 6, 48, 64, [...bytes.slice(6,14)].map(x=>hx(x)).join(':')),
+        F('protocol', 14, 112, 16, '0x' + hx(u16(bytes,14), 4) + ' ' + (ETHERTYPE[u16(bytes,14)] || ''))
+      ];
+      L.push({ name: 'Linux SLL', start: 0, len: 16, fields: f, tier: 'l2', summary: 'cooked capture' });
+      const et = u16(bytes, 14);
+      next = { kind: et === 0x0800 ? 'ip4' : et === 0x86dd ? 'ip6' : 'raw', off: 16 };
+    } else { next = { kind: 'raw', off: 0 }; }
+
+    while (next && next.kind !== 'raw' && next.off < bytes.length) {
+      if (next.kind === 'ip') next.kind = (bytes[next.off] >> 4) === 6 ? 'ip6' : 'ip4';
+      if (next.kind === 'ip4') next = ipv4(bytes, next.off, L);
+      else if (next.kind === 'ip6') next = ipv6(bytes, next.off, L);
+      else if (next.kind === 'arp') { arp(bytes, next.off, L); next = null; }
+      else if (next.kind === 'udp') next = udp(bytes, next.off, L);
+      else if (next.kind === 'tcp') next = tcp(bytes, next.off, L);
+      else if (next.kind === 'icmp') { icmp(bytes, next.off, L, false); next = null; }
+      else if (next.kind === 'icmp6') { icmp(bytes, next.off, L, true); next = null; }
+      else if (next.kind === 'dns') { dns(bytes, next.off, next.end, L); next = null; }
+      else break;
+    }
+  } catch (e) {
+    L.push({ name: 'truncated', start: 0, len: 0, fields: [], tier: 'pay', summary: 'ran off the end of the frame' });
+  }
+  const used = L.reduce((m, l) => Math.max(m, l.start + l.len), 0);
+  if (used < bytes.length) {
+    L.push({ name: 'payload', start: used, len: bytes.length - used, tier: 'pay',
+      fields: [F('data', used, 0, (bytes.length - used) * 8, ascii(bytes, used, bytes.length - used))],
+      summary: (bytes.length - used) + ' bytes' });
+  }
+  return L;
+}
+function ascii(b, o, n) {
+  let s = '';
+  for (let i = 0; i < Math.min(n, 40); i++) { const c = b[o+i]; s += (c >= 32 && c < 127) ? String.fromCharCode(c) : '.'; }
+  return s + (n > 40 ? '…' : '');
+}
+
+function eth(b, o, L) {
+  const et = u16(b, o + 12);
+  const f = [
+    F('destination', o, 0, 48, mac(b, o), { edit: 'mac' }),
+    F('source', o + 6, 48, 48, mac(b, o + 6), { edit: 'mac' }),
+    F('ethertype', o + 12, 96, 16, '0x' + hx(et, 4) + (ETHERTYPE[et] ? '  ' + ETHERTYPE[et] : ''), { edit: 'u16' })
+  ];
+  L.push({ name: 'Ethernet II', start: o, len: 14, fields: f, tier: 'l2',
+    summary: mac(b, o + 6) + ' → ' + mac(b, o) });
+  if (et === 0x0800) return { kind: 'ip4', off: o + 14 };
+  if (et === 0x86dd) return { kind: 'ip6', off: o + 14 };
+  if (et === 0x0806) return { kind: 'arp', off: o + 14 };
+  return { kind: 'raw', off: o + 14 };
+}
+
+function arp(b, o, L) {
+  const f = [
+    F('hardware type', o, 0, 16, u16(b, o)),
+    F('protocol type', o+2, 16, 16, '0x' + hx(u16(b,o+2), 4)),
+    F('hw size', o+4, 32, 8, b[o+4]),
+    F('proto size', o+5, 40, 8, b[o+5]),
+    F('opcode', o+6, 48, 16, u16(b,o+6) === 1 ? '1  request' : u16(b,o+6) === 2 ? '2  reply' : u16(b,o+6)),
+    F('sender mac', o+8, 64, 48, mac(b, o+8), { edit: 'mac' }),
+    F('sender ip', o+14, 112, 32, ip4(b, o+14), { edit: 'ip4' }),
+    F('target mac', o+18, 144, 48, mac(b, o+18), { edit: 'mac' }),
+    F('target ip', o+24, 192, 32, ip4(b, o+24), { edit: 'ip4' })
+  ];
+  L.push({ name: 'ARP', start: o, len: 28, fields: f, tier: 'l3',
+    summary: u16(b,o+6) === 1 ? 'who has ' + ip4(b,o+24) + '? tell ' + ip4(b,o+14) : ip4(b,o+14) + ' is at ' + mac(b,o+8) });
+}
+
+function ipv4(b, o, L) {
+  const ihl = b[o] & 0x0f, hlen = ihl * 4;
+  const total = u16(b, o + 2), proto = b[o + 9];
+  const flags = b[o + 6] >> 5, frag = u16(b, o + 6) & 0x1fff;
+  const stored = u16(b, o + 10);
+  const calc = (() => { const c = b.slice(); c[o+10] = 0; c[o+11] = 0; return checksum(c, o, hlen); })();
+  const f = [
+    F('version', o, 0, 4, b[o] >> 4),
+    F('IHL', o, 4, 4, ihl + '  (' + hlen + ' bytes)'),
+    F('DSCP', o+1, 8, 6, b[o+1] >> 2),
+    F('ECN', o+1, 14, 2, b[o+1] & 3),
+    F('total length', o+2, 16, 16, total, { edit: 'u16', derived: 'len' }),
+    F('identification', o+4, 32, 16, '0x' + hx(u16(b,o+4), 4), { edit: 'u16' }),
+    F('flags', o+6, 48, 3, (flags & 2 ? 'DF ' : '') + (flags & 1 ? 'MF' : '') || '·'),
+    F('fragment offset', o+6, 51, 13, frag),
+    F('TTL', o+8, 64, 8, b[o+8], { edit: 'u8' }),
+    F('protocol', o+9, 72, 8, proto + '  ' + (IPPROTO[proto] || ''), { edit: 'u8' }),
+    F('header checksum', o+10, 80, 16, '0x' + hx(stored, 4), { check: { stored, calc }, derived: 'csum' }),
+    F('source', o+12, 96, 32, ip4(b, o+12), { edit: 'ip4' }),
+    F('destination', o+16, 128, 32, ip4(b, o+16), { edit: 'ip4' })
+  ];
+  if (hlen > 20) f.push(F('options', o+20, 160, (hlen-20)*8, [...b.slice(o+20, o+hlen)].map(x=>hx(x)).join(' ')));
+  L.push({ name: 'IPv4', start: o, len: hlen, fields: f, tier: 'l3',
+    summary: ip4(b, o+12) + ' → ' + ip4(b, o+16) + '  ' + (IPPROTO[proto] || proto),
+    ipOff: o, payLen: Math.max(0, total - hlen) });
+  const nx = o + hlen;
+  if (frag > 0) return { kind: 'raw', off: nx };
+  if (proto === 6) return { kind: 'tcp', off: nx, ipOff: o, v6: false };
+  if (proto === 17) return { kind: 'udp', off: nx, ipOff: o, v6: false };
+  if (proto === 1) return { kind: 'icmp', off: nx };
+  return { kind: 'raw', off: nx };
+}
+
+function ipv6(b, o, L) {
+  const plen = u16(b, o + 4), nh = b[o + 6];
+  const tc = ((b[o] & 0x0f) << 4) | (b[o+1] >> 4);
+  const flow = ((b[o+1] & 0x0f) << 16) | u16(b, o+2);
+  const f = [
+    F('version', o, 0, 4, b[o] >> 4),
+    F('traffic class', o, 4, 8, tc),
+    F('flow label', o+1, 12, 20, '0x' + hx(flow, 5)),
+    F('payload length', o+4, 32, 16, plen, { edit: 'u16', derived: 'len' }),
+    F('next header', o+6, 48, 8, nh + '  ' + (IPPROTO[nh] || ''), { edit: 'u8' }),
+    F('hop limit', o+7, 56, 8, b[o+7], { edit: 'u8' }),
+    F('source', o+8, 64, 128, ip6(b, o+8), { edit: 'ip6' }),
+    F('destination', o+24, 192, 128, ip6(b, o+24), { edit: 'ip6' })
+  ];
+  L.push({ name: 'IPv6', start: o, len: 40, fields: f, tier: 'l3',
+    summary: ip6(b, o+8) + ' → ' + ip6(b, o+24) + '  ' + (IPPROTO[nh] || nh),
+    ipOff: o, payLen: plen });
+  const nx = o + 40;
+  if (nh === 6) return { kind: 'tcp', off: nx, ipOff: o, v6: true };
+  if (nh === 17) return { kind: 'udp', off: nx, ipOff: o, v6: true };
+  if (nh === 58) return { kind: 'icmp6', off: nx };
+  return { kind: 'raw', off: nx };
+}
+
+function udp(b, o, L, ctx) {
+  const sp = u16(b, o), dp = u16(b, o+2), len = u16(b, o+4), stored = u16(b, o+6);
+  const prev = L[L.length-1];
+  let calc = null;
+  if (prev && prev.ipOff !== undefined) {
+    const c = b.slice(); c[o+6] = 0; c[o+7] = 0;
+    const init = prev.name === 'IPv6' ? pseudoV6(c, prev.ipOff, 17, len) : pseudoV4(c, prev.ipOff, 17, o, len);
+    calc = checksum(c, o, len, init) || 0xffff;
+  }
+  const f = [
+    F('source port', o, 0, 16, sp, { edit: 'u16' }),
+    F('destination port', o+2, 16, 16, dp, { edit: 'u16' }),
+    F('length', o+4, 32, 16, len, { edit: 'u16', derived: 'len' }),
+    F('checksum', o+6, 48, 16, '0x' + hx(stored, 4) + (stored === 0 ? '  (none)' : ''),
+      { check: stored === 0 ? null : { stored, calc }, derived: 'csum' })
+  ];
+  L.push({ name: 'UDP', start: o, len: 8, fields: f, tier: 'l4', summary: sp + ' → ' + dp + '  ' + Math.max(0, len - 8) + ' bytes' });
+  const end = Math.min(b.length, o + Math.max(8, len));
+  if (sp === 53 || dp === 53 || sp === 5353 || dp === 5353) return { kind: 'dns', off: o + 8, end };
+  return { kind: 'raw', off: o + 8 };
+}
+
+const TCPFLAGS = ['FIN','SYN','RST','PSH','ACK','URG','ECE','CWR'];
+function tcp(b, o, L) {
+  const sp = u16(b,o), dp = u16(b,o+2), doff = (b[o+12] >> 4), hlen = doff * 4;
+  const fl = b[o+13] | ((b[o+12] & 1) << 8);
+  const names = TCPFLAGS.filter((_, i) => fl & (1 << i));
+  const stored = u16(b, o+16);
+  const prev = L[L.length-1];
+  let calc = null, segLen = 0;
+  if (prev && prev.ipOff !== undefined) {
+    segLen = prev.payLen !== undefined ? prev.payLen : (b.length - o);
+    const c = b.slice(); c[o+16] = 0; c[o+17] = 0;
+    const init = prev.name === 'IPv6' ? pseudoV6(c, prev.ipOff, 6, segLen) : pseudoV4(c, prev.ipOff, 6, o, segLen);
+    calc = checksum(c, o, segLen, init);
+  }
+  const f = [
+    F('source port', o, 0, 16, sp, { edit: 'u16' }),
+    F('destination port', o+2, 16, 16, dp, { edit: 'u16' }),
+    F('sequence', o+4, 32, 32, u32(b,o+4), { edit: 'u32' }),
+    F('acknowledgement', o+8, 64, 32, u32(b,o+8), { edit: 'u32' }),
+    F('data offset', o+12, 96, 4, doff + '  (' + hlen + ' bytes)'),
+    F('reserved', o+12, 100, 3, (b[o+12] >> 1) & 7),
+    F('flags', o+13, 103, 9, '0x' + hx(fl, 3) + '  ' + (names.join(' ') || '·')),
+    F('window', o+14, 112, 16, u16(b,o+14), { edit: 'u16' }),
+    F('checksum', o+16, 128, 16, '0x' + hx(stored, 4), { check: { stored, calc }, derived: 'csum' }),
+    F('urgent pointer', o+18, 144, 16, u16(b,o+18))
+  ];
+  // options
+  let p = o + 20;
+  const optEnd = o + hlen;
+  while (p < optEnd && p < b.length) {
+    const kind = b[p];
+    if (kind === 0) { f.push(F('option: EOL', p, (p-o)*8, 8, 'end of options')); break; }
+    if (kind === 1) { f.push(F('option: NOP', p, (p-o)*8, 8, 'padding')); p++; continue; }
+    const ln = b[p+1] || 2;
+    let disp = [...b.slice(p+2, p+ln)].map(x=>hx(x)).join(' ');
+    let nm = 'option ' + kind;
+    if (kind === 2) { nm = 'option: MSS'; disp = u16(b,p+2) + ' bytes'; }
+    else if (kind === 3) { nm = 'option: window scale'; disp = 'shift ' + b[p+2] + '  (×' + (1 << b[p+2]) + ')'; }
+    else if (kind === 4) { nm = 'option: SACK permitted'; disp = 'yes'; }
+    else if (kind === 5) { nm = 'option: SACK'; }
+    else if (kind === 8) { nm = 'option: timestamps'; disp = 'val ' + u32(b,p+2) + '  ecr ' + u32(b,p+6); }
+    f.push(F(nm, p, (p-o)*8, ln*8, disp));
+    p += ln;
+  }
+  L.push({ name: 'TCP', start: o, len: hlen, fields: f, tier: 'l4',
+    summary: sp + ' → ' + dp + '  [' + (names.join(',') || '·') + ']  seq ' + u32(b,o+4) });
+  const nx = o + hlen;
+  if (sp === 53 || dp === 53) return { kind: 'raw', off: nx };
+  return { kind: 'raw', off: nx };
+}
+
+const ICMPTYPE = { 0:'echo reply', 3:'destination unreachable', 8:'echo request', 11:'time exceeded' };
+const ICMP6TYPE = { 1:'destination unreachable', 128:'echo request', 129:'echo reply', 133:'router solicitation',
+  134:'router advertisement', 135:'neighbor solicitation', 136:'neighbor advertisement' };
+function icmp(b, o, L, v6) {
+  const t = b[o], names = v6 ? ICMP6TYPE : ICMPTYPE;
+  const f = [
+    F('type', o, 0, 8, t + '  ' + (names[t] || ''), { edit: 'u8' }),
+    F('code', o+1, 8, 8, b[o+1], { edit: 'u8' }),
+    F('checksum', o+2, 16, 16, '0x' + hx(u16(b,o+2), 4), { derived: 'csum' })
+  ];
+  if (t === 8 || t === 0 || t === 128 || t === 129) {
+    f.push(F('identifier', o+4, 32, 16, u16(b,o+4), { edit: 'u16' }));
+    f.push(F('sequence', o+6, 48, 16, u16(b,o+6), { edit: 'u16' }));
+  }
+  L.push({ name: v6 ? 'ICMPv6' : 'ICMP', start: o, len: (t === 8 || t === 0 || t === 128 || t === 129) ? 8 : 4,
+    fields: f, tier: 'l4', summary: (names[t] || 'type ' + t) });
+}
+
+/* ---------- DNS, with name compression ---------- */
+function dnsName(b, o, limit, base) {
+  let s = '', p = o, jumped = false, used = 0, guard = 0;
+  while (p < b.length && guard++ < 64) {
+    const l = b[p];
+    if (l === 0) { if (!jumped) used = p - o + 1; break; }
+    if ((l & 0xc0) === 0xc0) {
+      if (!jumped) used = p - o + 2;
+      p = (base || 0) + (((l & 0x3f) << 8) | b[p+1]);
+      jumped = true;
+      continue;
+    }
+    s += (s ? '.' : '') + String.fromCharCode(...b.slice(p+1, p+1+l));
+    p += 1 + l;
+    if (!jumped && p - o > 255) break;
+  }
+  return { name: s || '<root>', used: used || 1 };
+}
+function dns(b, o, end, L) {
+  const id = u16(b,o), fl = u16(b,o+2);
+  const qd = u16(b,o+4), an = u16(b,o+6), ns = u16(b,o+8), ar = u16(b,o+10);
+  const rcode = fl & 0x0f;
+  const f = [
+    F('transaction id', o, 0, 16, '0x' + hx(id, 4), { edit: 'u16' }),
+    F('QR', o+2, 16, 1, (fl >> 15) ? '1  response' : '0  query'),
+    F('opcode', o+2, 17, 4, (fl >> 11) & 0x0f),
+    F('AA', o+2, 21, 1, (fl >> 10) & 1),
+    F('TC', o+2, 22, 1, (fl >> 9) & 1),
+    F('RD', o+2, 23, 1, (fl >> 8) & 1),
+    F('RA', o+3, 24, 1, (fl >> 7) & 1),
+    F('Z', o+3, 25, 3, (fl >> 4) & 7),
+    F('rcode', o+3, 28, 4, rcode + '  ' + (DNSRCODE[rcode] || '')),
+    F('questions', o+4, 32, 16, qd),
+    F('answer RRs', o+6, 48, 16, an),
+    F('authority RRs', o+8, 64, 16, ns),
+    F('additional RRs', o+10, 80, 16, ar)
+  ];
+  let p = o + 12, bit = 96;
+  let first = '';
+  for (let i = 0; i < qd && p < end; i++) {
+    const n = dnsName(b, p, end, o);
+    if (!first) first = n.name;
+    f.push(F('query name', p, bit, n.used * 8, n.name, { edit: 'dnsname' }));
+    bit += n.used * 8; p += n.used;
+    const t = u16(b, p), c = u16(b, p+2);
+    f.push(F('query type', p, bit, 16, t + '  ' + (DNSTYPE[t] || ''), { edit: 'u16' }));
+    f.push(F('query class', p+2, bit+16, 16, c === 1 ? '1  IN' : c));
+    bit += 32; p += 4;
+  }
+  for (let i = 0; i < an + ns + ar && p < end; i++) {
+    const n = dnsName(b, p, end, o);
+    const rr = p + n.used;
+    if (rr + 10 > end) break;
+    const t = u16(b, rr), cls = u16(b, rr+2), ttl = u32(b, rr+4), dl = u16(b, rr+8);
+    let val = [...b.slice(rr+10, Math.min(end, rr+10+dl))].map(x => hx(x)).join(' ');
+    if (t === 1 && dl === 4) val = ip4(b, rr+10);
+    else if (t === 28 && dl === 16) val = ip6(b, rr+10);
+    else if (t === 5 || t === 2 || t === 12) val = dnsName(b, rr+10, end, o).name;
+    f.push(F('rr name', p, bit, n.used * 8, n.name));
+    bit += n.used * 8;
+    f.push(F('rr type', rr, bit, 16, t + '  ' + (DNSTYPE[t] || '')));
+    f.push(F('rr class', rr+2, bit+16, 16, cls === 1 ? '1  IN' : cls));
+    f.push(F('ttl', rr+4, bit+32, 32, ttl + 's'));
+    f.push(F('rdlength', rr+8, bit+64, 16, dl));
+    f.push(F('rdata', rr+10, bit+80, dl*8, val));
+    bit += 80 + dl*8;
+    p = rr + 10 + dl;
+  }
+  L.push({ name: 'DNS', start: o, len: Math.max(12, Math.min(end, p) - o), fields: f, tier: 'l5',
+    summary: ((fl >> 15) ? 'response' : 'query') + (first ? '  ' + first : '') +
+             (rcode ? '  ' + (DNSRCODE[rcode] || rcode) : '') });
+}
+
+/* ============================================================
+   tcpdump text — header lines plus -x / -X / -XX hex rows
+   ============================================================ */
+const ROW = /^\s*(?:0x)?([0-9a-f]{3,8})\s*:?\s+((?:[0-9a-f]{2,4}[ \t]+)*[0-9a-f]{2,4})/i;
+
+function parseTcpdump(text) {
+  const lines = text.split(/\r?\n/);
+  const packets = [];
+  let cur = null, head = [], width = 16, firstOff = null;
+
+  const flush = () => {
+    if (cur && cur.max > 0) {
+      packets.push({ bytes: cur.buf.slice(0, cur.max), note: cur.note });
+    }
+    cur = null;
+  };
+
+  for (const raw of lines) {
+    if (!raw.trim()) { continue; }
+    const m = raw.match(ROW);
+    // a hex row only counts if the offset is plausible and the row is mostly hex pairs
+    if (m && /^[0-9a-f\s\t]+$/i.test(m[2])) {
+      const off = parseInt(m[1], 16);
+      if (!cur || (off === 0 && cur.max > 0)) {
+        flush();
+        cur = { buf: new Uint8Array(262144), max: 0, note: head.join(' ').trim() };
+        head = [];
+        firstOff = null;
+      }
+      if (firstOff === null) firstOff = off;
+      else if (off > firstOff && width === 16) { width = off - firstOff; firstOff = -1; }
+      const toks = m[2].trim().split(/[\s\t]+/);
+      let p = off, taken = 0;
+      for (const t of toks) {
+        if (!/^[0-9a-f]{2}$/i.test(t) && !/^[0-9a-f]{4}$/i.test(t)) break;
+        for (let i = 0; i < t.length; i += 2) {
+          if (taken >= Math.max(8, width)) break;
+          if (p >= cur.buf.length) break;
+          cur.buf[p++] = parseInt(t.substr(i, 2), 16);
+          taken++;
+        }
+        if (taken >= Math.max(8, width)) break;
+      }
+      if (p > cur.max) cur.max = p;
+      continue;
+    }
+    // not a hex row: it belongs to the next packet's description
+    if (cur && cur.max > 0) flush();
+    head.push(raw.trim());
+  }
+  flush();
+  return packets;
+}
+
+// tcpdump does not tell you where the frame starts, so try the plausible framings
+// and keep whichever dissects into something coherent
+function scoreFraming(bytes, linktype) {
+  let score = 0;
+  let L;
+  try { L = dissect(bytes, linktype); } catch (e) { return { score: -1 }; }
+  const l3 = L.find(l => l.tier === 'l3');
+  const l4 = L.find(l => l.tier === 'l4');
+  if (L.find(l => l.tier === 'meta')) score += 4;
+  if (l3) score += 3;
+  if (l4) score += 2;
+  if (L.find(l => l.tier === 'l5')) score += 1;
+  if (l3 && l3.payLen !== undefined) {
+    const expect = l3.start + l3.len + l3.payLen;
+    const slack = Math.abs(expect - bytes.length);
+    if (slack === 0) score += 4; else if (slack <= 4) score += 2; else if (expect > bytes.length + 8) score -= 3;
+  }
+  if (L.some(l => l.name === 'truncated')) score -= 2;
+  return { score, layers: L };
+}
+
+function detectFraming(bytes, note) {
+  const cands = [];
+  if (pktapHeader(bytes, 0)) cands.push(258);
+  if (bytes.length >= 15) {
+    const et = u16(bytes, 12);
+    if (ETHERTYPE[et] || et >= 0x0600) cands.push(1);
+  }
+  const v = bytes[0] >> 4;
+  if (v === 4 || v === 6) cands.push(101);
+  if (bytes.length >= 17 && u16(bytes, 14) >= 0x0600) cands.push(113);
+  if (!cands.length) cands.push(1, 101);
+  let best = { score: -2, linktype: cands[0] };
+  for (const lt of cands) {
+    const r = scoreFraming(bytes, lt);
+    let s = r.score;
+    if (note) {                                   // let the text line break ties
+      if (/\bIP6\b/.test(note) && r.layers && r.layers.some(l => l.name === 'IPv6')) s += 2;
+      if (/\bIP\b/.test(note) && !/\bIP6\b/.test(note) && r.layers && r.layers.some(l => l.name === 'IPv4')) s += 2;
+      if (/\bARP\b/i.test(note) && r.layers && r.layers.some(l => l.name === 'ARP')) s += 2;
+    }
+    if (s > best.score) best = { score: s, linktype: lt };
+  }
+  return best.linktype;
+}
+
+/* ============================================================
+   capture files
+   ============================================================ */
+function readPcap(buf) {
+  const dv = new DataView(buf);
+  const magic = dv.getUint32(0, false);
+  let le, nano = false;
+  if (magic === 0xa1b2c3d4) { le = false; }
+  else if (magic === 0xd4c3b2a1) { le = true; }
+  else if (magic === 0xa1b23c4d) { le = false; nano = true; }
+  else if (magic === 0x4d3cb2a1) { le = true; nano = true; }
+  else return null;
+  const linktype = dv.getUint32(20, le);
+  const packets = [];
+  let p = 24;
+  while (p + 16 <= dv.byteLength && packets.length < 20000) {
+    const ts = dv.getUint32(p, le), tsu = dv.getUint32(p+4, le);
+    const cap = dv.getUint32(p+8, le), orig = dv.getUint32(p+12, le);
+    p += 16;
+    if (cap > dv.byteLength - p) break;
+    packets.push({ bytes: new Uint8Array(buf, p, cap), ts: ts + (nano ? tsu/1e9 : tsu/1e6), orig, linktype });
+    p += cap;
+  }
+  return { packets, format: 'pcap' + (nano ? ' (ns)' : ''), linktype };
+}
+
+function readPcapng(buf) {
+  const dv = new DataView(buf);
+  if (dv.getUint32(0, false) !== 0x0a0d0d0a) return null;
+  let le = dv.getUint32(8, false) === 0x1a2b3c4d ? false : true;
+  const packets = [];
+  const ifaces = [];
+  let p = 0;
+  while (p + 12 <= dv.byteLength) {
+    const type = dv.getUint32(p, le);
+    const len = dv.getUint32(p + 4, le);
+    if (len < 12 || p + len > dv.byteLength) break;
+    if (type === 0x0a0d0d0a) {
+      le = dv.getUint32(p + 8, false) === 0x1a2b3c4d ? false : true;
+    } else if (type === 1) {
+      ifaces.push({ linktype: dv.getUint16(p + 8, le) });
+    } else if (type === 6) {                       // enhanced packet block
+      const iid = dv.getUint32(p + 8, le);
+      const hi = dv.getUint32(p + 12, le), lo = dv.getUint32(p + 16, le);
+      const cap = dv.getUint32(p + 20, le), orig = dv.getUint32(p + 24, le);
+      if (cap <= len - 32) {
+        packets.push({ bytes: new Uint8Array(buf, p + 28, cap), orig,
+          ts: (hi * 4294967296 + lo) / 1e6,
+          linktype: (ifaces[iid] || ifaces[0] || { linktype: 1 }).linktype });
+      }
+    } else if (type === 3) {                       // simple packet block
+      const orig = dv.getUint32(p + 8, le);
+      const cap = Math.min(orig, len - 16);
+      packets.push({ bytes: new Uint8Array(buf, p + 12, cap), orig, ts: 0,
+        linktype: (ifaces[0] || { linktype: 1 }).linktype });
+    }
+    p += len;
+    if (packets.length > 20000) break;
+  }
+  return packets.length || ifaces.length ? { packets, format: 'pcapng', linktype: (ifaces[0]||{}).linktype || 1 } : null;
+}
+
+function writePcap(list, linktype) {
+  let total = 24;
+  for (const p of list) total += 16 + p.bytes.length;
+  const out = new Uint8Array(total);
+  const dv = new DataView(out.buffer);
+  dv.setUint32(0, 0xa1b2c3d4, true);
+  dv.setUint16(4, 2, true); dv.setUint16(6, 4, true);
+  dv.setUint32(8, 0, true); dv.setUint32(12, 0, true);
+  dv.setUint32(16, 262144, true); dv.setUint32(20, linktype, true);
+  let o = 24;
+  for (const p of list) {
+    const t = p.ts || Date.now() / 1000;
+    dv.setUint32(o, Math.floor(t), true);
+    dv.setUint32(o+4, Math.round((t % 1) * 1e6), true);
+    dv.setUint32(o+8, p.bytes.length, true);
+    dv.setUint32(o+12, p.orig || p.bytes.length, true);
+    out.set(p.bytes, o + 16);
+    o += 16 + p.bytes.length;
+  }
+  return out;
+}
+
+/* ============================================================
+   templates — parameters in, a whole frame out
+   ============================================================ */
+function parseIp4(s) {
+  const o = s.trim().split('.').map(Number);
+  return (o.length === 4 && o.every(n => n >= 0 && n <= 255)) ? o : [0,0,0,0];
+}
+function parseIp6(s) {
+  const a = s.trim();
+  const [h, t] = a.split('::');
+  const hp = h ? h.split(':').filter(Boolean) : [];
+  const tp = t !== undefined && t ? t.split(':').filter(Boolean) : [];
+  const fill = 8 - hp.length - tp.length;
+  const parts = [...hp, ...Array(Math.max(0, fill)).fill('0'), ...tp].slice(0, 8);
+  const out = [];
+  for (const g of parts) { const v = parseInt(g, 16) || 0; out.push(v >> 8, v & 0xff); }
+  while (out.length < 16) out.push(0);
+  return out;
+}
+function parseMac(s) {
+  const p = s.trim().split(/[:-]/).map(x => parseInt(x, 16) || 0);
+  while (p.length < 6) p.push(0);
+  return p.slice(0, 6);
+}
+function encodeName(n) {
+  const out = [];
+  if (n && n !== '.') for (const lbl of n.replace(/\.$/, '').split('.')) {
+    const b = [...lbl].map(c => c.charCodeAt(0) & 0xff).slice(0, 63);
+    out.push(b.length, ...b);
+  }
+  out.push(0);
+  return out;
+}
+
+const TEMPLATES = {
+  dns: {
+    name: 'DNS query',
+    fields: [
+      ['qname', 'text', 'termit.dev'], ['qtype', 'select', 'A', ['A','AAAA','CNAME','MX','TXT','PTR','SRV']],
+      ['txid', 'text', '0x1a2b'], ['src ip', 'text', ''], ['dst ip', 'text', ''],
+      ['src port', 'text', '43211'], ['dst port', 'text', '53']
+    ],
+    build(v, fam) {
+      const q = encodeName(v['qname']);
+      const t = { A:1, AAAA:28, CNAME:5, MX:15, TXT:16, PTR:12, SRV:33 }[v['qtype']] || 1;
+      const dnsB = [
+        (parseInt(v['txid']) >> 8) & 0xff, parseInt(v['txid']) & 0xff,
+        0x01, 0x00,              // standard query, recursion desired
+        0, 1, 0, 0, 0, 0, 0, 0,
+        ...q, (t >> 8) & 0xff, t & 0xff, 0, 1
+      ];
+      return wrapUDP(dnsB, v, fam);
+    }
+  },
+  udp: {
+    name: 'minimal UDP',
+    fields: [
+      ['payload', 'text', 'hello'], ['src ip', 'text', ''], ['dst ip', 'text', ''],
+      ['src port', 'text', '10000'], ['dst port', 'text', '9999']
+    ],
+    build(v, fam) {
+      const pay = [...v['payload']].map(c => c.charCodeAt(0) & 0xff);
+      return wrapUDP(pay, v, fam);
+    }
+  },
+  tcp: {
+    name: 'TCP SYN',
+    fields: [
+      ['src ip', 'text', ''], ['dst ip', 'text', ''],
+      ['src port', 'text', '51234'], ['dst port', 'text', '443'],
+      ['seq', 'text', '305419896'], ['window', 'text', '64240'],
+      ['mss option', 'select', 'yes', ['yes','no']]
+    ],
+    build(v, fam) {
+      const mss = v['mss option'] === 'yes';
+      const opts = mss ? [2, 4, 0x05, 0xb4, 1, 1, 4, 2] : [];   // MSS 1460, NOP NOP SACK-perm
+      const hlen = 20 + opts.length;
+      const seq = (parseInt(v['seq']) || 0) >>> 0;
+      const win = parseInt(v['window']) || 64240;
+      const sp = parseInt(v['src port']) || 0, dp = parseInt(v['dst port']) || 0;
+      const t = [
+        (sp>>8)&0xff, sp&0xff, (dp>>8)&0xff, dp&0xff,
+        (seq>>>24)&0xff, (seq>>>16)&0xff, (seq>>>8)&0xff, seq&0xff,
+        0,0,0,0,
+        (hlen/4) << 4, 0x02,                      // SYN
+        (win>>8)&0xff, win&0xff,
+        0,0, 0,0,
+        ...opts
+      ];
+      return wrapIP(t, 6, v, fam);
+    }
+  },
+  icmp: {
+    name: 'ICMP echo',
+    fields: [
+      ['src ip', 'text', ''], ['dst ip', 'text', ''],
+      ['identifier', 'text', '1'], ['sequence', 'text', '1'], ['payload', 'text', 'abcdefghij']
+    ],
+    build(v, fam) {
+      const id = parseInt(v['identifier']) || 0, sq = parseInt(v['sequence']) || 0;
+      const pay = [...v['payload']].map(c => c.charCodeAt(0) & 0xff);
+      const body = [ fam === 6 ? 128 : 8, 0, 0, 0, (id>>8)&0xff, id&0xff, (sq>>8)&0xff, sq&0xff, ...pay ];
+      return wrapIP(body, fam === 6 ? 58 : 1, v, fam);
+    }
+  }
+};
+
+function wrapUDP(payload, v, fam) {
+  const sp = parseInt(v['src port']) || 0, dp = parseInt(v['dst port']) || 0;
+  const len = 8 + payload.length;
+  const u = [ (sp>>8)&0xff, sp&0xff, (dp>>8)&0xff, dp&0xff, (len>>8)&0xff, len&0xff, 0, 0, ...payload ];
+  return wrapIP(u, 17, v, fam);
+}
+
+function wrapIP(l4, proto, v, fam) {
+  const dmac = parseMac('00:1c:42:00:00:08'), smac = parseMac('00:1c:42:00:00:09');
+  let ip;
+  if (fam === 6) {
+    const s = parseIp6(v['src ip'] || 'fd00:dead:beef::17');
+    const d = parseIp6(v['dst ip'] || 'fd00:dead:beef::1');
+    ip = [ 0x60,0,0,0, (l4.length>>8)&0xff, l4.length&0xff, proto, 64, ...s, ...d ];
+  } else {
+    const s = parseIp4(v['src ip'] || '10.244.3.17');
+    const d = parseIp4(v['dst ip'] || '10.244.0.53');
+    const total = 20 + l4.length;
+    ip = [ 0x45, 0, (total>>8)&0xff, total&0xff, 0x1a,0x2b, 0x40,0, 64, proto, 0,0, ...s, ...d ];
+  }
+  const eth = [ ...dmac, ...smac, fam === 6 ? 0x86 : 0x08, fam === 6 ? 0xdd : 0x00 ];
+  const bytes = new Uint8Array([...eth, ...ip, ...l4]);
+  fixAll(bytes, 1);
+  return bytes;
+}
+
+/* ============================================================
+   recompute lengths and checksums
+   ============================================================ */
+function fixAll(bytes, linktype) {
+  const L = dissect(bytes, linktype);
+  const ipL = L.find(l => l.name === 'IPv4' || l.name === 'IPv6');
+  const l4L = L.find(l => l.name === 'TCP' || l.name === 'UDP' || l.name === 'ICMP' || l.name === 'ICMPv6');
+  if (!ipL) return L;
+  const o = ipL.start;
+  if (ipL.name === 'IPv4') {
+    const total = bytes.length - o;
+    bytes[o+2] = (total >> 8) & 0xff; bytes[o+3] = total & 0xff;
+    bytes[o+10] = 0; bytes[o+11] = 0;
+    const c = checksum(bytes, o, ipL.len);
+    bytes[o+10] = (c >> 8) & 0xff; bytes[o+11] = c & 0xff;
+  } else {
+    const plen = bytes.length - o - 40;
+    bytes[o+4] = (plen >> 8) & 0xff; bytes[o+5] = plen & 0xff;
+  }
+  if (!l4L) return dissect(bytes, linktype);
+  const lo = l4L.start, segLen = bytes.length - lo;
+  const v6 = ipL.name === 'IPv6';
+  if (l4L.name === 'UDP') {
+    bytes[lo+4] = (segLen >> 8) & 0xff; bytes[lo+5] = segLen & 0xff;
+    bytes[lo+6] = 0; bytes[lo+7] = 0;
+    const init = v6 ? pseudoV6(bytes, o, 17, segLen) : pseudoV4(bytes, o, 17, lo, segLen);
+    const c = checksum(bytes, lo, segLen, init) || 0xffff;
+    bytes[lo+6] = (c >> 8) & 0xff; bytes[lo+7] = c & 0xff;
+  } else if (l4L.name === 'TCP') {
+    bytes[lo+16] = 0; bytes[lo+17] = 0;
+    const init = v6 ? pseudoV6(bytes, o, 6, segLen) : pseudoV4(bytes, o, 6, lo, segLen);
+    const c = checksum(bytes, lo, segLen, init);
+    bytes[lo+16] = (c >> 8) & 0xff; bytes[lo+17] = c & 0xff;
+  } else if (l4L.name === 'ICMP' || l4L.name === 'ICMPv6') {
+    bytes[lo+2] = 0; bytes[lo+3] = 0;
+    const init = v6 ? pseudoV6(bytes, o, 58, segLen) : 0;
+    const c = checksum(bytes, lo, segLen, init);
+    bytes[lo+2] = (c >> 8) & 0xff; bytes[lo+3] = c & 0xff;
+  }
+  return dissect(bytes, linktype);
+}
+
+/* ============================================================
+   field editing
+   ============================================================ */
+function setField(f, raw) {
+  const b = P.bytes;
+  const kind = f.edit;
+  try {
+    if (kind === 'mac') { parseMac(raw).forEach((v, i) => b[f.off + i] = v); }
+    else if (kind === 'ip4') { parseIp4(raw).forEach((v, i) => b[f.off + i] = v); }
+    else if (kind === 'ip6') { parseIp6(raw).forEach((v, i) => b[f.off + i] = v); }
+    else if (kind === 'u8')  { b[f.off] = (parseInt(raw.replace(/^0x/i, ''), raw.match(/^0x/i) ? 16 : 10) || 0) & 0xff; }
+    else if (kind === 'u16') {
+      const v = (parseInt(raw.replace(/^0x/i, ''), raw.match(/^0x/i) ? 16 : 10) || 0) & 0xffff;
+      b[f.off] = v >> 8; b[f.off+1] = v & 0xff;
+    }
+    else if (kind === 'u32') {
+      const v = (parseInt(raw.replace(/^0x/i, ''), raw.match(/^0x/i) ? 16 : 10) || 0) >>> 0;
+      b[f.off] = (v>>>24)&0xff; b[f.off+1] = (v>>>16)&0xff; b[f.off+2] = (v>>>8)&0xff; b[f.off+3] = v&0xff;
+    }
+    else return false;
+  } catch (e) { return false; }
+  return true;
+}
+
+/* ============================================================
+   rendering
+   ============================================================ */
+function tierColor(t) { return LCOL[t] || LCOL.pay; }
+
+function renderStack() {
+  const box = $('stack');
+  if (!P.layers.length) { box.innerHTML = '<span style="color:var(--faint)">nothing loaded</span>'; return; }
+  box.innerHTML = (P.note ? '<div style="color:var(--faint);font-size:10.5px;border-bottom:1px dashed var(--line);' +
+      'padding-bottom:7px;margin-bottom:8px;white-space:pre-wrap;word-break:break-word">' + esc(P.note) + '</div>' : '') +
+    P.layers.map((l, i) =>
+    '<div class="lyr" style="margin-bottom:6px"><div class="lh" data-l="' + i + '" style="cursor:pointer;background:' +
+    tierColor(l.tier) + '22;color:' + tierColor(l.tier) + ';border-left:2px solid ' + tierColor(l.tier) + '">' +
+    esc(l.name) + '</div><div style="color:var(--faint);font-size:10.5px;padding-left:8px">' +
+    esc(l.summary || '') + '<br>offset ' + l.start + ' · ' + l.len + ' bytes</div></div>').join('');
+  box.querySelectorAll('.lh').forEach(e => e.addEventListener('click', () => { P.selLayer = +e.dataset.l; render(); }));
+}
+
+function renderTabs() {
+  const box = $('ltabs');
+  box.innerHTML = P.layers.map((l, i) =>
+    '<button class="ltab' + (i === P.selLayer ? ' on' : '') + '" data-l="' + i + '" style="' +
+    (i === P.selLayer ? 'background:' + tierColor(l.tier) + ';border-color:' + tierColor(l.tier) : 'color:' + tierColor(l.tier)) +
+    '">' + esc(l.name) + '</button>').join('');
+  box.querySelectorAll('.ltab').forEach(e => e.addEventListener('click', () => { P.selLayer = +e.dataset.l; render(); }));
+}
+
+function renderDiagram() {
+  const box = $('diagram');
+  const l = P.layers[P.selLayer];
+  if (!l) { box.innerHTML = ''; return; }
+  // slice fields into 32-bit rows
+  const segs = [];
+  for (const f of l.fields) {
+    if (f.bitOff === undefined) continue;
+    let start = f.bitOff, remain = f.bits;
+    while (remain > 0) {
+      const row = Math.floor(start / 32), col = start % 32;
+      const take = Math.min(remain, 32 - col);
+      segs.push({ f, row, col, take, first: start === f.bitOff });
+      start += take; remain -= take;
+    }
+  }
+  const rows = segs.length ? Math.max(...segs.map(s => s.row)) + 1 : 0;
+  if (rows > 40) { box.innerHTML = '<span style="color:var(--faint)">layer is too long to diagram — use the field list</span>'; return; }
+  let h = '<div class="ruler">';
+  for (let i = 0; i < 32; i++) h += '<span>' + (i % 4 === 0 ? i : '·') + '</span>';
+  h += '</div>';
+  for (let r = 0; r < rows; r++) {
+    h += '<div class="drow">';
+    let col = 0;
+    for (const s of segs.filter(x => x.row === r).sort((a,b) => a.col - b.col)) {
+      if (s.col > col) h += '<div style="grid-column:span ' + (s.col - col) + '"></div>';
+      const on = P.selField === s.f;
+      h += '<div class="cell' + (on ? ' on' : '') + '" style="grid-column:span ' + s.take +
+           ';border-color:' + tierColor(l.tier) + '55" data-fi="' + l.fields.indexOf(s.f) + '">' +
+           '<span class="fn">' + esc(s.first ? s.f.name : '…') + '</span>' +
+           '<span class="fv">' + esc(s.take >= 3 ? s.f.disp.slice(0, s.take * 2) : '') + '</span></div>';
+      col = s.col + s.take;
+    }
+    if (col < 32) h += '<div style="grid-column:span ' + (32 - col) + '"></div>';
+    h += '</div>';
+  }
+  box.innerHTML = h;
+  box.querySelectorAll('.cell').forEach(e => e.addEventListener('click', () => {
+    P.selField = l.fields[+e.dataset.fi]; render();
+  }));
+}
+
+function renderTree() {
+  const box = $('tree');
+  let h = '';
+  P.layers.forEach((l, li) => {
+    h += '<div class="lyr"><div class="lh" style="background:' + tierColor(l.tier) + '22;color:' +
+         tierColor(l.tier) + '">' + esc(l.name) + '<span style="float:right;font-weight:400;opacity:.7">' +
+         l.start + '–' + (l.start + l.len - 1) + '</span></div>';
+    l.fields.forEach((f, fi) => {
+      const on = P.selField === f;
+      let val;
+      if (f.edit) {
+        val = '<input data-li="' + li + '" data-fi="' + fi + '" value="' + esc(f.disp.split('  ')[0]) + '">';
+      } else {
+        val = esc(f.disp);
+      }
+      let hint = '';
+      if (f.check) {
+        hint = f.check.calc === null ? ''
+          : f.check.stored === f.check.calc
+            ? '<span class="hint ok">✓ valid</span>'
+            : '<span class="hint bad">✗ should be 0x' + hx(f.check.calc, 4) + '</span>';
+      }
+      h += '<div class="fld' + (on ? ' on' : '') + '" data-li="' + li + '" data-fi="' + fi + '">' +
+           '<span class="o">' + f.off + '</span><span class="k">' + esc(f.name) + '</span>' +
+           '<span class="v">' + val + hint + '</span></div>';
+    });
+    h += '</div>';
+  });
+  box.innerHTML = h;
+  box.querySelectorAll('.fld').forEach(e => e.addEventListener('mouseenter', () => {
+    P.selField = P.layers[+e.dataset.li].fields[+e.dataset.fi];
+    paintHexSelection();
+  }));
+  box.querySelectorAll('input').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const f = P.layers[+inp.dataset.li].fields[+inp.dataset.fi];
+      if (setField(f, inp.value)) {
+        if ($('b-fix').classList.contains('on')) fixAll(P.bytes, P.linktype);
+        reload();
+      }
+    });
+  });
+}
+
+function renderHex() {
+  const b = P.bytes;
+  const owner = new Array(b.length).fill(null);
+  P.layers.forEach((l, li) => {
+    for (let i = l.start; i < Math.min(b.length, l.start + l.len); i++) owner[i] = { li, tier: l.tier };
+    l.fields.forEach((f, fi) => {
+      for (let i = f.off; i < Math.min(b.length, f.off + Math.ceil(f.bits / 8)); i++) {
+        if (owner[i]) owner[i] = Object.assign({}, owner[i], { fi });
+      }
+    });
+  });
+  let h = '';
+  for (let r = 0; r < b.length; r += 16) {
+    h += '<span class="off">' + hx(r, 4) + '</span>  ';
+    for (let i = r; i < r + 16; i++) {
+      if (i >= b.length) { h += '   '; continue; }
+      const o = owner[i];
+      h += '<b data-i="' + i + '" style="color:' + (o ? tierColor(o.tier) : 'var(--pay)') + '">' + hx(b[i]) + '</b> ';
+      if (i % 8 === 7) h += ' ';
+    }
+    h += ' ';
+    for (let i = r; i < Math.min(b.length, r + 16); i++) {
+      const c = b[i], o = owner[i];
+      h += '<b data-i="' + i + '" style="color:' + (o ? tierColor(o.tier) : 'var(--pay)') + '">' +
+           esc((c >= 32 && c < 127) ? String.fromCharCode(c) : '.') + '</b>';
+    }
+    h += '\n';
+  }
+  $('hexview').innerHTML = h;
+  $('hexview').querySelectorAll('b').forEach(e => e.addEventListener('click', () => {
+    const i = +e.dataset.i;
+    for (const l of P.layers) for (const f of l.fields) {
+      if (i >= f.off && i < f.off + Math.ceil(f.bits / 8)) {
+        P.selField = f; P.selLayer = P.layers.indexOf(l); render(); return;
+      }
+    }
+  }));
+  paintHexSelection();
+}
+
+function paintHexSelection() {
+  const f = P.selField;
+  const box = $('hexview');
+  box.querySelectorAll('b.on').forEach(e => e.classList.remove('on'));
+  if (!f) return;
+  const end = f.off + Math.ceil(f.bits / 8);
+  box.querySelectorAll('b').forEach(e => {
+    const i = +e.dataset.i;
+    if (i >= f.off && i < end) e.classList.add('on');
+  });
+}
+
+function renderList() {
+  if (!P.capture) { $('side-list').style.display = 'none'; return; }
+  $('side-list').style.display = '';
+  $('cap-n').textContent = '(' + P.capture.packets.length + ')';
+  const box = $('plist');
+  box.innerHTML = P.capture.packets.slice(0, 3000).map((p, i) => {
+    const L = dissect(p.bytes, p.linktype);
+    const top = L.filter(l => l.tier !== 'pay').slice(-1)[0] || L[0] || {};
+    const net = L.find(l => l.tier === 'l3');
+    const label = p.note ? p.note.replace(/^\d{2}:\d{2}:\d{2}\.\d+\s*/, '')
+                         : (top.name || '?') + ' · ' + ((net && net.summary) || top.summary || '');
+    return '<div class="prow' + (i === P.sel ? ' on' : '') + '" data-i="' + i + '" title="' + esc(p.note || '') + '">' +
+      '<span class="n">' + (i + 1) + '</span>' +
+      '<span class="i">' + esc(label) + '</span></div>';
+  }).join('');
+  box.querySelectorAll('.prow').forEach(e => e.addEventListener('click', () => {
+    P.sel = +e.dataset.i;
+    const p = P.capture.packets[P.sel];
+    P.bytes = new Uint8Array(p.bytes);
+    P.linktype = p.linktype;
+    P.note = p.note || '';
+    P.selField = null; P.selLayer = 0;
+    reload();
+  }));
+}
+
+function render() {
+  renderStack(); renderTabs(); renderDiagram(); renderTree(); renderHex();
+  $('p-len').textContent = P.bytes.length + ' bytes';
+}
+function reload() {
+  P.layers = dissect(P.bytes, P.linktype);
+  if (P.selLayer >= P.layers.length) P.selLayer = 0;
+  render();
+  renderList();
+}
+
+/* ============================================================
+   input
+   ============================================================ */
+function loadBuffer(buf, name) {
+  const cap = readPcapng(buf) || readPcap(buf);
+  if (!cap || !cap.packets.length) {
+    $('p-src').textContent = 'unreadable file';
+    $('p-src').className = 'pill warn';
+    return;
+  }
+  P.capture = cap;
+  P.sel = 0;
+  const p = cap.packets[0];
+  P.bytes = new Uint8Array(p.bytes);
+  P.linktype = p.linktype;
+  P.selField = null; P.selLayer = 0;
+  $('p-src').className = 'pill';
+  $('p-src').textContent = (name || cap.format) + ' · ' + cap.packets.length + ' packets';
+  $('drop').style.display = 'none';
+  reload();
+}
+
+$('b-open').addEventListener('click', () => $('file').click());
+$('file').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  f.arrayBuffer().then(b => loadBuffer(b, f.name));
+});
+const drop = $('drop');
+['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('hot'); }));
+['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('hot'); }));
+drop.addEventListener('drop', e => {
+  const f = e.dataTransfer.files[0];
+  if (f) f.arrayBuffer().then(b => loadBuffer(b, f.name));
+});
+
+const PLACEHOLDER = {
+  hex: '00 1c 42 00 00 08 00 1c 42 00 00 09 08 00 45 00 …   (whitespace, 0x and : are ignored)',
+  td: '13:50:47.756881 IP6 … > … : 621 q: A? example.com.\n' +
+      '\t0x0000:  9c00 0000 0100 0000 0100 0000 656e 3000\n' +
+      '\t0x0010:  0000 0000 0000 0000 0000 0000 0000 0000\n' +
+      '   (paste a whole tcpdump -X session — every packet in it becomes an entry)'
+};
+let pasteMode = 'hex';
+function openPaste(mode) {
+  const box = $('hexbox');
+  const same = pasteMode === mode && box.style.display !== 'none';
+  pasteMode = mode;
+  box.style.display = same ? 'none' : '';
+  $('hexhead').textContent = mode === 'td' ? 'paste tcpdump output' : 'paste hex';
+  $('hextext').placeholder = PLACEHOLDER[mode];
+  $('b-hex').classList.toggle('on', mode === 'hex' && box.style.display !== 'none');
+  $('b-td').classList.toggle('on', mode === 'td' && box.style.display !== 'none');
+}
+$('b-hex').addEventListener('click', () => openPaste('hex'));
+$('b-td').addEventListener('click', () => openPaste('td'));
+
+function adoptPackets(list, label) {
+  if (!list.length) { $('hexnote').innerHTML = '<span style="color:var(--red)">no packet bytes found in that</span>'; return; }
+  const want = $('hexlink').value;
+  list.forEach(p => { p.linktype = want === 'auto' ? detectFraming(p.bytes, p.note) : +want; });
+  P.capture = list.length > 1 ? { packets: list, format: label } : null;
+  P.sel = list.length > 1 ? 0 : -1;
+  P.bytes = new Uint8Array(list[0].bytes);
+  P.linktype = list[0].linktype;
+  P.note = list[0].note || '';
+  P.selField = null; P.selLayer = 0;
+  const LT = { 1: 'Ethernet', 101: 'raw IP', 113: 'Linux SLL', 258: 'PKTAP' };
+  $('hexnote').innerHTML = 'read ' + list.length + (list.length === 1 ? ' packet · ' : ' packets · ') +
+    list[0].bytes.length + ' bytes · framed as <b style="color:var(--dim)">' + (LT[list[0].linktype] || list[0].linktype) + '</b>';
+  $('p-src').textContent = label;
+  $('p-src').className = 'pill';
+  $('drop').style.display = 'none';
+  reload();
+}
+
+$('b-hexgo').addEventListener('click', () => {
+  const text = $('hextext').value;
+  if (!text.trim()) { $('hexnote').textContent = 'nothing pasted yet'; return; }
+  const looksTcpdump = /^\s*(?:0x)?[0-9a-f]{3,8}\s*:/im.test(text);
+  if (pasteMode === 'td' || looksTcpdump) {
+    adoptPackets(parseTcpdump(text), 'tcpdump paste');
+    return;
+  }
+  const raw = text.replace(/0x/gi, '').replace(/[^0-9a-f]/gi, '');
+  if (raw.length < 4) { $('hexnote').textContent = 'need at least a couple of bytes'; return; }
+  const b = new Uint8Array(raw.length >> 1);
+  for (let i = 0; i < b.length; i++) b[i] = parseInt(raw.substr(i*2, 2), 16);
+  adoptPackets([{ bytes: b, note: '' }], 'pasted hex');
+});
+
+/* ---------- template form ---------- */
+function showTemplate(key) {
+  P.template = key;
+  const t = TEMPLATES[key];
+  if (!t) { $('side-tmpl').style.display = 'none'; return; }
+  $('side-tmpl').style.display = '';
+  const fam = +$('fam').value;
+  const box = $('tform');
+  box.innerHTML = t.fields.map(([n, kind, def, opts]) => {
+    let d = def;
+    if (n === 'src ip') d = fam === 6 ? 'fd00:dead:beef::17' : '10.244.3.17';
+    if (n === 'dst ip') d = fam === 6 ? 'fd00:dead:beef::1' : (key === 'dns' ? '10.244.0.53' : '10.244.0.9');
+    if (kind === 'select')
+      return '<label>' + n + '</label><select data-n="' + n + '">' +
+        opts.map(o => '<option' + (o === d ? ' selected' : '') + '>' + o + '</option>').join('') + '</select>';
+    return '<label>' + n + '</label><input type="text" data-n="' + n + '" value="' + esc(d) + '">';
+  }).join('') + '<div class="full note">edit any field above, or edit raw bytes in the field list — lengths and checksums are recomputed for you.</div>';
+  box.querySelectorAll('input,select').forEach(e => e.addEventListener('change', buildTemplate));
+  buildTemplate();
+}
+function buildTemplate() {
+  const t = TEMPLATES[P.template];
+  if (!t) return;
+  const v = {};
+  $('tform').querySelectorAll('input,select').forEach(e => v[e.dataset.n] = e.value);
+  P.bytes = t.build(v, +$('fam').value);
+  P.linktype = 1;
+  P.capture = null; P.sel = -1; P.selField = null; P.selLayer = 0;
+  $('p-src').textContent = 'template · ' + t.name;
+  $('p-src').className = 'pill';
+  $('drop').style.display = 'none';
+  reload();
+}
+$('tmpl').addEventListener('change', () => showTemplate($('tmpl').value));
+$('fam').addEventListener('change', () => { if (P.template) showTemplate(P.template); });
+
+/* ---------- actions ---------- */
+$('b-fix').classList.add('on');
+$('b-fix').addEventListener('click', () => {
+  fixAll(P.bytes, P.linktype);
+  reload();
+});
+$('b-copy').addEventListener('click', () => {
+  const h = [...P.bytes].map(x => hx(x)).join(' ');
+  navigator.clipboard && navigator.clipboard.writeText(h);
+  $('b-copy').textContent = 'copied';
+  setTimeout(() => $('b-copy').textContent = 'copy hex', 1200);
+});
+$('b-save').addEventListener('click', () => {
+  if (!P.bytes.length) return;
+  const out = writePcap([{ bytes: P.bytes, ts: Date.now()/1000 }], P.linktype);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([out], { type: 'application/vnd.tcpdump.pcap' }));
+  a.download = (P.template || 'packet') + '.pcap';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+});
+
+/* ---------- boot with something to look at ---------- */
+$('tmpl').value = 'dns';
+showTemplate('dns');
+</script>
+</body>
+</html>

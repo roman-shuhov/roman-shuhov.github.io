@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>COLONY — termit.dev</title>
+<meta name="description" content="A rule-writing idle game. Your termites are dumb. You write their instincts.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23050805'/%3E%3Cellipse cx='13' cy='16' rx='8' ry='4.5' fill='%232fd478'/%3E%3Ccircle cx='24' cy='16' r='3.4' fill='%23b4ffcd'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #050805;
+    --panel: #0a120c;
+    --panel-2: #071009;
+    --line: #103d22;
+    --green: #00ff41;
+    --bright: #b4ffcd;
+    --dim: #1e9e5c;
+    --faint: #0f5c33;
+    --amber: #ffb000;
+    --red: #ff5c5c;
+    --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--green);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+  ::selection { background: var(--green); color: #031007; }
+  .scanlines {
+    position: fixed; inset: 0; z-index: 50; pointer-events: none;
+    background: repeating-linear-gradient(to bottom,
+      rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(0,0,0,.16) 3px);
+    mix-blend-mode: multiply;
+  }
+
+  /* ---------- header ---------- */
+  header {
+    border-bottom: 1px solid var(--line);
+    background: var(--panel-2);
+    padding: 10px 16px;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  }
+  .logo { font-weight: 800; font-size: 16px; color: var(--bright); letter-spacing: .1em; }
+  .logo small { color: var(--dim); font-weight: 400; font-size: 11px; letter-spacing: 0; margin-left: 8px; }
+  header .sp { flex: 1; }
+  .stat { color: var(--dim); font-size: 12px; white-space: nowrap; }
+  .stat b { color: var(--bright); font-weight: 700; }
+  .stat.cel b { color: var(--amber); }
+
+  /* ---------- layout ---------- */
+  .game { display: grid; grid-template-columns: minmax(0,1fr) 400px; gap: 14px; padding: 14px; align-items: start; }
+  @media (max-width: 1000px) { .game { grid-template-columns: 1fr; } }
+
+  .board-wrap {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px; box-shadow: 0 0 30px rgba(0,255,65,.06);
+  }
+  canvas { display: block; width: 100%; height: auto; border-radius: 6px; background: #030603; }
+  .controls { display: flex; gap: 6px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+  .log {
+    margin-top: 10px; height: 92px; overflow-y: auto; font-size: 11.5px;
+    color: var(--dim); border-top: 1px dashed var(--faint); padding-top: 8px;
+  }
+  .log div { white-space: pre-wrap; }
+  .log .hi { color: var(--bright); }
+  .log .am { color: var(--amber); }
+
+  /* ---------- panel ---------- */
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .tabs { display: flex; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+  .tab {
+    flex: 1; padding: 10px 6px; text-align: center; cursor: pointer;
+    font-size: 11.5px; letter-spacing: .1em; color: var(--dim);
+    background: none; border: none; font-family: var(--mono); border-bottom: 2px solid transparent;
+  }
+  .tab:hover { color: var(--bright); }
+  .tab.on { color: var(--green); border-bottom-color: var(--green); background: rgba(0,255,65,.05); }
+  .tabbody { padding: 12px; max-height: 66vh; overflow-y: auto; }
+  .tabbody::-webkit-scrollbar, .log::-webkit-scrollbar { width: 7px; }
+  .tabbody::-webkit-scrollbar-thumb, .log::-webkit-scrollbar-thumb { background: var(--faint); border-radius: 4px; }
+
+  .note { color: var(--dim); font-size: 11.5px; margin-bottom: 10px; }
+  .note b { color: var(--bright); }
+
+  /* ---------- rules ---------- */
+  .rule {
+    display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+    padding: 5px 6px; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 5px;
+    background: var(--panel-2);
+  }
+  .rule.fixed { opacity: .65; border-style: dashed; }
+  .rn { color: var(--faint); width: 15px; font-size: 11px; }
+  .kw { color: var(--dim); font-size: 11px; }
+  .rule select {
+    background: #061008; color: var(--bright); border: 1px solid var(--line);
+    border-radius: 4px; font-family: var(--mono); font-size: 11.5px; padding: 3px 4px; max-width: 122px;
+  }
+  .rule select:focus { outline: none; border-color: var(--green); }
+  .rule select option:disabled { color: var(--faint); }
+  .rbtn {
+    background: none; border: 1px solid var(--line); color: var(--dim); cursor: pointer;
+    border-radius: 4px; width: 21px; height: 21px; font-size: 11px; font-family: var(--mono); line-height: 1;
+  }
+  .rbtn:hover { color: var(--green); border-color: var(--green); }
+  .rspacer { flex: 1; }
+  .slots { color: var(--dim); font-size: 11px; margin: 8px 0; }
+  .slots b { color: var(--bright); }
+
+  .btn {
+    background: transparent; border: 1px solid var(--line); color: var(--green);
+    font-family: var(--mono); font-size: 11.5px; padding: 6px 11px; border-radius: 6px; cursor: pointer;
+    transition: background .12s, border-color .12s;
+  }
+  .btn:hover:not(:disabled) { border-color: var(--green); background: rgba(0,255,65,.08); }
+  .btn:disabled { opacity: .35; cursor: not-allowed; }
+  .btn.on { background: rgba(0,255,65,.14); border-color: var(--green); }
+  .btn.amber { color: var(--amber); border-color: #533; }
+  .btn.amber:hover:not(:disabled) { border-color: var(--amber); background: rgba(255,176,0,.1); }
+
+  /* ---------- upgrades / contracts ---------- */
+  .row {
+    border: 1px solid var(--line); border-radius: 7px; padding: 9px 10px; margin-bottom: 7px;
+    background: var(--panel-2);
+  }
+  .row .top { display: flex; align-items: baseline; gap: 8px; }
+  .row .nm { color: var(--bright); font-weight: 700; font-size: 12.5px; }
+  .row .lv { color: var(--faint); font-size: 11px; }
+  .row .sp { flex: 1; }
+  .row .ds { color: var(--dim); font-size: 11.5px; margin: 3px 0 7px; }
+  .row.done { opacity: .55; }
+  .row.locked { opacity: .45; }
+  .bar { height: 5px; background: #06120a; border-radius: 3px; overflow: hidden; margin: 6px 0 4px; }
+  .bar i { display: block; height: 100%; background: var(--green); border-radius: 3px; transition: width .3s; }
+  .goal { color: var(--dim); font-size: 11.5px; }
+  .goal b { color: var(--green); }
+  .hint { color: var(--amber); font-size: 11px; margin-top: 6px; display: none; line-height: 1.55; }
+  .hint.show { display: block; }
+  .tiny { background: none; border: none; color: var(--faint); font-family: var(--mono);
+          font-size: 10.5px; cursor: pointer; text-decoration: underline; padding: 0; }
+  .tiny:hover { color: var(--amber); }
+  .tagline { color: var(--faint); font-size: 11px; text-align: center; padding: 4px 14px 18px; }
+  .tagline a { color: var(--dim); }
+</style>
+</head>
+<body>
+<div class="scanlines"></div>
+
+<header>
+  <div class="logo">COLONY<small>rule-driven swarm · termit.dev</small></div>
+  <div class="sp"></div>
+  <div class="stat cel">cellulose <b id="s-cel">0</b></div>
+  <div class="stat">rate <b id="s-rate">0</b>/min</div>
+  <div class="stat">workers <b id="s-pop">0</b></div>
+  <div class="stat" id="s-sol-wrap" style="display:none">soldiers <b id="s-sol">0</b></div>
+  <div class="stat">field <b id="s-chips">0</b></div>
+  <div class="stat" id="s-siege" style="display:none;color:var(--red)">⚔ <b id="s-siege-txt"></b></div>
+</header>
+
+<div class="game">
+  <div class="board-wrap">
+    <canvas id="board"></canvas>
+    <div class="controls">
+      <button class="btn" id="b-pause">❚❚ pause</button>
+      <button class="btn on" id="b-1">1×</button>
+      <button class="btn" id="b-2">2×</button>
+      <button class="btn" id="b-4">4×</button>
+      <div style="flex:1"></div>
+      <button class="btn amber" id="b-reset">reset colony</button>
+    </div>
+    <div class="log" id="log"></div>
+  </div>
+
+  <div class="panel">
+    <div class="tabs">
+      <button class="tab on" data-t="rules">INSTINCTS</button>
+      <button class="tab" data-t="colony">COLONY</button>
+      <button class="tab" data-t="contracts">CONTRACTS</button>
+      <button class="tab" data-t="sieges" id="tab-sieges" style="display:none">SIEGES</button>
+    </div>
+
+    <div class="tabbody" id="t-rules">
+      <div class="controls" style="margin:0 0 10px">
+        <button class="btn on" id="c-worker">WORKERS</button>
+        <button class="btn" id="c-soldier" disabled>SOLDIERS 🔒</button>
+      </div>
+      <p class="note" id="caste-note">Your termites have no plan. Each tick, a termite reads this list top to bottom and does
+        <b>the first rule that matches</b> — nothing else. Order is everything.</p>
+      <div id="rulelist"></div>
+      <div class="rule fixed">
+        <span class="rn">—</span><span class="kw">ELSE</span>
+        <span class="kw">→</span><span style="color:var(--dim);font-size:11.5px">wander</span>
+        <span class="rspacer"></span><span class="kw">(instinct)</span>
+      </div>
+      <p class="slots">slots used <b><span id="slot-used">0</span> / <span id="slot-max">4</span></b></p>
+      <button class="btn" id="b-addrule">+ add rule</button>
+    </div>
+
+    <div class="tabbody" id="t-colony" style="display:none">
+      <p class="note">Spend cellulose to grow the colony. Costs rise with each level.</p>
+      <div id="upglist"></div>
+    </div>
+
+    <div class="tabbody" id="t-sieges" style="display:none">
+      <p class="note">Ant raiders march on the nest and haul your cellulose out through the edges.
+        <b>Kill a loaded raider and you get the cellulose back.</b> Soldiers cannot harvest — every soldier
+        is a worker you are not fielding.</p>
+      <div id="siegelist"></div>
+    </div>
+
+    <div class="tabbody" id="t-contracts" style="display:none">
+      <p class="note">Contracts test your program, not your patience. Some need a different set of
+        instincts than harvesting does — rewriting mid-run is the game.</p>
+      <div id="conlist"></div>
+    </div>
+  </div>
+</div>
+
+<p class="tagline">colony state saves automatically · <a href="/">termit.dev</a></p>
+
+<script>
+'use strict';
+
+/* ============================================================
+   storage — works hosted (localStorage) or sandboxed (window.storage)
+   ============================================================ */
+const KEY = 'termit-colony-v1';
+const mem = {};
+const Store = {
+  async load() {
+    try { if (window.storage) { const r = await window.storage.get(KEY); return r ? r.value : null; } } catch (e) {}
+    try { return localStorage.getItem(KEY); } catch (e) {}
+    return mem[KEY] || null;
+  },
+  async save(v) {
+    try { if (window.storage) { await window.storage.set(KEY, v); return; } } catch (e) {}
+    try { localStorage.setItem(KEY, v); return; } catch (e) {}
+    mem[KEY] = v;
+  },
+  async wipe() {
+    try { if (window.storage) { await window.storage.delete(KEY); return; } } catch (e) {}
+    try { localStorage.removeItem(KEY); return; } catch (e) {}
+    delete mem[KEY];
+  }
+};
+
+/* ============================================================
+   world
+   ============================================================ */
+const W = 40, H = 24, N = W * H, CAP = 9;
+const idx = (x, y) => y * W + x;
+const inB = (x, y) => x >= 0 && y >= 0 && x < W && y < H;
+
+const chip = new Uint8Array(N);
+const wall = new Uint8Array(N);
+const nest = new Uint8Array(N);
+const pher = new Float32Array(N);
+const mark = new Uint8Array(N);      // blueprint cells
+let markActive = false;
+
+const NX = W >> 1, NY = H >> 1;      // nest centre
+const DIRS = [[1,0],[0,1],[-1,0],[0,-1]];
+
+let termites = [];
+
+const S = {
+  cel: 0, delivered: 0, ticks: 0, rate: 0,
+  upg: { worker: 0, speed: 0, jaws: 0, slot: 0, regrow: 0, queen: 0, soldier: 0, barracks: 0 },
+  unlocked: {},          // 'crowded' | 'pher' | 'blueprint'
+  done: {},              // contract id -> true
+  sdone: {},             // siege id -> true
+  bonusSlots: 0,
+  bonusSoldierSlots: 0,
+  lastSave: Date.now()
+};
+
+function buildWorld() {
+  chip.fill(0); wall.fill(0); nest.fill(0); pher.fill(0); mark.fill(0);
+  for (let x = 0; x < W; x++) { wall[idx(x,0)] = 1; wall[idx(x,H-1)] = 1; }
+  for (let y = 0; y < H; y++) { wall[idx(0,y)] = 1; wall[idx(W-1,y)] = 1; }
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) nest[idx(NX+dx, NY+dy)] = 1;
+  // scattered rock clusters, never near the nest
+  for (let k = 0; k < 14; k++) {
+    const cx = 2 + ((Math.random() * (W-4)) | 0), cy = 2 + ((Math.random() * (H-4)) | 0);
+    if (Math.abs(cx-NX) < 5 && Math.abs(cy-NY) < 4) continue;
+    for (let j = 0; j < 3; j++) {
+      const x = cx + ((Math.random()*3)|0) - 1, y = cy + ((Math.random()*3)|0) - 1;
+      if (inB(x,y) && !nest[idx(x,y)]) wall[idx(x,y)] = 1;
+    }
+  }
+  for (let k = 0; k < 85; k++) spawnChip();
+  // blueprint: a 10-cell arrow, parked in open ground
+  const bx = NX + 9, by = NY - 4;
+  [[0,0],[1,0],[2,0],[3,0],[1,1],[1,2],[1,3],[2,1],[0,-1],[3,-1]].forEach(([dx,dy]) => {
+    const x = bx+dx, y = by+dy;
+    if (inB(x,y)) { wall[idx(x,y)] = 0; mark[idx(x,y)] = 1; }
+  });
+}
+
+function spawnChip() {
+  for (let tries = 0; tries < 40; tries++) {
+    let x, y;
+    if (Math.random() < 0.14) {                       // a little clustering, mostly scatter
+      const seed = (Math.random() * N) | 0;
+      if (!chip[seed]) continue;
+      x = (seed % W) + ((Math.random()*5)|0) - 2;
+      y = ((seed / W) | 0) + ((Math.random()*5)|0) - 2;
+    } else {
+      x = 1 + ((Math.random() * (W-2)) | 0);
+      y = 1 + ((Math.random() * (H-2)) | 0);
+    }
+    if (!inB(x,y)) continue;
+    const i = idx(x,y);
+    if (wall[i] || nest[i] || chip[i] >= CAP) continue;
+    if (markActive && mark[i]) continue;                      // blueprints must be filled by hand
+    if (Math.abs(x-NX) < 4 && Math.abs(y-NY) < 3) continue;   // keep the doorstep clear
+    chip[i]++;
+    return;
+  }
+}
+
+function soldierMaxHp() { return 10 + S.upg.barracks * 5; }
+function soldierDmg()   { return 2 + S.upg.barracks; }
+function maxHp(t)       { return t.caste === 'soldier' ? soldierMaxHp() : 4; }
+
+function addTermite(caste) {
+  caste = (caste === 'soldier') ? 'soldier' : 'worker';
+  termites.push({
+    x: NX, y: NY, d: (Math.random()*4)|0, carry: false, caste,
+    hp: caste === 'soldier' ? soldierMaxHp() : 4, cd: 0
+  });
+}
+const workerCount  = () => termites.reduce((n, t) => n + (t.caste === 'worker'  ? 1 : 0), 0);
+const soldierCount = () => termites.reduce((n, t) => n + (t.caste === 'soldier' ? 1 : 0), 0);
+
+/* ---------- raiders ---------- */
+let ants = [];
+let hatchQ = [], hatchAcc = 0;
+const siege = { active:false, id:null, queue:0, spawnAcc:0, killed:0, total:0, stolen:0, escaped:0, cap:120 };
+
+function spawnAnt(hp, dmg) {
+  const side = (Math.random()*4)|0;
+  let x, y;
+  if (side === 0) { x = 1; y = 1 + ((Math.random()*(H-2))|0); }
+  else if (side === 1) { x = W-2; y = 1 + ((Math.random()*(H-2))|0); }
+  else if (side === 2) { x = 1 + ((Math.random()*(W-2))|0); y = 1; }
+  else { x = 1 + ((Math.random()*(W-2))|0); y = H-2; }
+  if (!inB(x,y)) return;
+  wall[idx(x,y)] = 0;
+  ants.push({ x, y, d:(Math.random()*4)|0, hp, max:hp, dmg, cd:0, loot:0 });
+}
+function adjAnt(x, y) {
+  for (const a of ants) if (Math.abs(a.x-x) + Math.abs(a.y-y) === 1) return a;
+  return null;
+}
+function nearestAnt(x, y, r) {
+  let best = null, bd = 1e9;
+  for (const a of ants) {
+    const d = Math.abs(a.x-x) + Math.abs(a.y-y);
+    if (d < bd) { bd = d; best = a; }
+  }
+  return (best && bd <= r) ? best : null;
+}
+function adjTermite(x, y) {
+  let best = null;
+  for (const t of termites) {
+    if (Math.abs(t.x-x) + Math.abs(t.y-y) !== 1) continue;
+    if (!best || (t.caste === 'soldier') > (best.caste === 'soldier')) best = t;
+  }
+  return best;
+}
+function killAnt(a) {
+  if (a.loot) { S.cel += a.loot; a.loot = 0; }
+  ants = ants.filter(x => x !== a);
+  siege.killed++;
+}
+function hurtTermite(t, dmg) {
+  t.hp -= dmg;
+  if (t.hp > 0) return;
+  termites = termites.filter(x => x !== t);
+  hatchQ.push(t.caste);
+  log('<span class="am">a ' + t.caste + ' was killed</span> — the queen will replace it');
+}
+function antStep(a) {
+  if (a.cd > 0) a.cd--;
+  const t = adjTermite(a.x, a.y);
+  if (t && a.cd === 0) { hurtTermite(t, a.dmg); a.cd = 6; return; }
+  if (a.loot) {
+    if (a.x <= 1 || a.x >= W-2 || a.y <= 1 || a.y >= H-2) {
+      siege.stolen += a.loot;
+      siege.escaped++;
+      log('<span class="am">a raider escaped with ' + a.loot + ' cellulose</span>');
+      ants = ants.filter(x => x !== a);
+      return;
+    }
+    stepToward(a, a.x < NX ? 1 : W-2, a.y < NY ? 1 : H-2, false);
+    return;
+  }
+  if (nest[idx(a.x,a.y)]) {
+    const take = Math.min(25, Math.floor(S.cel));
+    if (take > 0) { S.cel -= take; a.loot = take; return; }
+  }
+  stepToward(a, NX, NY, false);
+}
+
+/* ============================================================
+   sensors & actions — the vocabulary of the rule language
+   ============================================================ */
+function adjChips(x, y) {
+  let n = 0;
+  for (const [dx,dy] of DIRS) { const nx=x+dx, ny=y+dy; if (inB(nx,ny) && chip[idx(nx,ny)]) n++; }
+  return n;
+}
+function adjTermites(x, y) {
+  let n = 0;
+  for (const t of termites) { const d = Math.abs(t.x-x) + Math.abs(t.y-y); if (d > 0 && d <= 1) n++; }
+  return n;
+}
+function passable(x, y) { return inB(x,y) && !wall[idx(x,y)]; }
+
+const CONDS = [
+  { id:'always',    label:'always',          test: () => true },
+  { id:'empty',     label:'hands empty',     test: t => !t.carry },
+  { id:'carrying',  label:'carrying a chip', test: t => t.carry },
+  { id:'on_chip',   label:'standing on chip',test: t => chip[idx(t.x,t.y)] > 0 },
+  { id:'near_chip', label:'chip adjacent',   test: t => adjChips(t.x,t.y) > 0 },
+  { id:'at_nest',   label:'at the nest',     test: t => nest[idx(t.x,t.y)] === 1 },
+  { id:'near_nest', label:'near the nest',   test: t => Math.abs(t.x-NX) <= 3 && Math.abs(t.y-NY) <= 3 },
+  { id:'blocked',   label:'blocked ahead',   test: t => !passable(t.x+DIRS[t.d][0], t.y+DIRS[t.d][1]) },
+  { id:'on_mark',   label:'on marked cell',  test: t => mark[idx(t.x,t.y)] === 1, lock:'blueprint' },
+  { id:'crowded',   label:'crowded',         test: t => adjTermites(t.x,t.y) >= 2, lock:'crowded' },
+  { id:'on_trail',  label:'on a trail',      test: t => pher[idx(t.x,t.y)] > 0.06, lock:'pher' },
+  { id:'enemy_adj', label:'enemy adjacent',  test: t => !!adjAnt(t.x,t.y), lock:'combat' },
+  { id:'enemy_near',label:'enemy in sight',  test: t => !!nearestAnt(t.x,t.y,7), lock:'combat' },
+  { id:'raided',    label:'enemy in the nest',test: () => ants.some(a => Math.abs(a.x-NX) <= 2 && Math.abs(a.y-NY) <= 2), lock:'combat' },
+  { id:'wounded',   label:'wounded',         test: t => t.hp <= maxHp(t) * 0.5, lock:'wounded' }
+];
+const CONDMAP = Object.fromEntries(CONDS.map(c => [c.id, c]));
+
+function moveFwd(t) {
+  const nx = t.x + DIRS[t.d][0], ny = t.y + DIRS[t.d][1];
+  if (passable(nx, ny)) { t.x = nx; t.y = ny; return true; }
+  t.d = (t.d + 1 + ((Math.random()*3)|0)) & 3;
+  return false;
+}
+function stepToward(t, tx, ty, away) {
+  const dx = tx - t.x, dy = ty - t.y;
+  const opts = [];
+  if (dx) opts.push(dx > 0 ? 0 : 2);
+  if (dy) opts.push(dy > 0 ? 1 : 3);
+  if (!opts.length) { act_wander(t); return; }
+  if (Math.abs(dy) > Math.abs(dx)) opts.reverse();
+  if (away) for (let i = 0; i < opts.length; i++) opts[i] = (opts[i] + 2) & 3;
+  if (Math.random() < 0.2) opts.reverse();
+  for (const d of opts) {
+    const nx = t.x + DIRS[d][0], ny = t.y + DIRS[d][1];
+    if (passable(nx, ny)) { t.d = d; t.x = nx; t.y = ny; return; }
+  }
+  act_wander(t);
+}
+function act_wander(t) {
+  const r = Math.random();
+  if (r < 0.25) t.d = (t.d + 1) & 3;
+  else if (r < 0.5) t.d = (t.d + 3) & 3;
+  moveFwd(t);
+}
+function deliver() {
+  S.cel += 1 + S.upg.jaws;
+  S.delivered++;
+  bucket[bi]++;
+}
+const ACTS = [
+  { id:'wander',  label:'wander',            run: act_wander },
+  { id:'forward', label:'step forward',      run: t => moveFwd(t) },
+  { id:'left',    label:'turn left',         run: t => { t.d = (t.d + 3) & 3; } },
+  { id:'right',   label:'turn right',        run: t => { t.d = (t.d + 1) & 3; } },
+  { id:'pick',    label:'pick up a chip',   caste:'worker', run: t => {
+      const i = idx(t.x,t.y);
+      if (!t.carry && chip[i] > 0 && !(markActive && mark[i])) { chip[i]--; t.carry = true; }
+      else act_wander(t);                            // nothing to grab — don't stand there
+    } },
+  { id:'drop',    label:'drop the chip',    caste:'worker', run: t => {
+      const i = idx(t.x,t.y);
+      if (!t.carry) return;
+      if (nest[i]) { t.carry = false; deliver(); }
+      else if (chip[i] < CAP && !wall[i]) { chip[i]++; t.carry = false; }
+    } },
+  { id:'home',    label:'head to the nest',  run: t => stepToward(t, NX, NY, false) },
+  { id:'roam',    label:'head away',         run: t => stepToward(t, NX, NY, true) },
+  { id:'mark',    label:'haul + lay trail', caste:'worker', run: t => {
+      const i = idx(t.x,t.y);
+      pher[i] = Math.min(1, pher[i] + 0.45);
+      stepToward(t, NX, NY, false);
+    }, lock:'pher' },
+  { id:'follow',  label:'follow trail out', caste:'worker', run: t => {
+      let best = -1, bd = -1;
+      for (let d = 0; d < 4; d++) {
+        const nx = t.x + DIRS[d][0], ny = t.y + DIRS[d][1];
+        if (!passable(nx, ny)) continue;
+        const home = Math.abs(nx-NX) + Math.abs(ny-NY) - (Math.abs(t.x-NX) + Math.abs(t.y-NY));
+        const v = pher[idx(nx,ny)] + (home > 0 ? 0.05 : 0);
+        if (v > best) { best = v; bd = d; }
+      }
+      if (bd >= 0 && best > 0.06) { t.d = bd; t.x += DIRS[bd][0]; t.y += DIRS[bd][1]; }
+      else act_wander(t);
+    }, lock:'pher' },
+  { id:'attack', label:'strike the enemy', caste:'soldier', lock:'combat', run: t => {
+      const a = adjAnt(t.x, t.y);
+      if (!a) { act_wander(t); return; }
+      if (t.cd === 0) { a.hp -= soldierDmg(); t.cd = 5; if (a.hp <= 0) killAnt(a); }
+    } },
+  { id:'charge', label:'charge the enemy', caste:'soldier', lock:'combat', run: t => {
+      const a = nearestAnt(t.x, t.y, 99);
+      if (a) stepToward(t, a.x, a.y, false); else act_wander(t);
+    } },
+  { id:'guard',  label:'hold the perimeter', caste:'soldier', lock:'combat', run: t => {
+      const dist = Math.max(Math.abs(t.x-NX), Math.abs(t.y-NY));
+      if (dist > 4) stepToward(t, NX, NY, false);
+      else if (dist < 3) stepToward(t, NX, NY, true);
+      else act_wander(t);
+    } },
+  { id:'rest',   label:'fall back and heal', caste:'soldier', lock:'wounded', run: t => {
+      if (nest[idx(t.x,t.y)]) { t.hp = Math.min(maxHp(t), t.hp + 0.06); act_wander(t); }
+      else stepToward(t, NX, NY, false);
+    } },
+  { id:'flee',   label:'run from the enemy', lock:'flee', run: t => {
+      const a = nearestAnt(t.x, t.y, 99);
+      if (a) stepToward(t, a.x, a.y, true); else act_wander(t);
+    } }
+];
+const ACTMAP = Object.fromEntries(ACTS.map(a => [a.id, a]));
+
+const isUnlocked = o => !o.lock || !!S.unlocked[o.lock];
+
+/* ============================================================
+   the player's program
+   ============================================================ */
+let rules = {
+  worker: [ { c1:'empty', c2:'on_chip', act:'pick' } ],
+  soldier: [ { c1:'always', c2:'none', act:'guard' } ]
+};
+let activeCaste = 'worker';
+const slotMax = c => (c === 'soldier' ? 4 + S.bonusSoldierSlots : 4 + S.upg.slot + S.bonusSlots);
+
+function stepTermite(t) {
+  if (t.cd > 0) t.cd--;
+  for (const r of (t.caste === 'soldier' ? rules.soldier : rules.worker)) {
+    const a = CONDMAP[r.c1], b = r.c2 && r.c2 !== 'none' ? CONDMAP[r.c2] : null;
+    if (!a || !a.test(t)) continue;
+    if (b && !b.test(t)) continue;
+    const act = ACTMAP[r.act];
+    if (act) { act.run(t); return; }
+  }
+  act_wander(t);
+}
+
+/* ============================================================
+   loop
+   ============================================================ */
+let paused = false, speed = 1, regrowAcc = 0;
+const bucket = new Array(60).fill(0);
+let bi = 0, lastBucket = 0;
+
+function tick() {
+  for (const t of termites.slice()) stepTermite(t);
+  for (const a of ants.slice()) antStep(a);
+  if (siege.active) {
+    if (siege.queue > 0) {
+      siege.spawnAcc += 1;
+      if (siege.spawnAcc >= siege.gap) { siege.spawnAcc = 0; siege.queue--; spawnAnt(siege.hp, siege.dmg); }
+    }
+    if (siege.queue === 0 && ants.length === 0) endSiege(siege.killed >= siege.total);
+    else if (siege.stolen >= siege.cap) endSiege(false);
+  }
+  if (hatchQ.length) {
+    hatchAcc += 0.005 + S.upg.queen * 0.003;
+    while (hatchAcc >= 1 && hatchQ.length) { hatchAcc--; addTermite(hatchQ.shift()); }
+  }
+  for (let i = 0; i < N; i++) if (pher[i] > 0) pher[i] = pher[i] > 0.004 ? pher[i] * 0.986 : 0;
+  regrowAcc += 0.10 + S.upg.regrow * 0.07;
+  while (regrowAcc >= 1) {
+    regrowAcc--;
+    let f = 0; for (let i = 0; i < N; i++) f += chip[i];
+    if (f < 90 + 22 * S.upg.regrow) spawnChip();
+  }
+  S.ticks++;
+}
+
+let acc = 0, last = performance.now();
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(250, now - last); last = now;
+  if (!paused) {
+    const tps = (5 + S.upg.speed * 1.6) * speed;
+    acc += dt / 1000 * tps;
+    let guard = 0;
+    while (acc >= 1 && guard++ < 120) { tick(); acc--; }
+  }
+  if (now - lastBucket > 1000) {
+    lastBucket = now;
+    bi = (bi + 1) % 60; bucket[bi] = 0;
+    S.rate = bucket.reduce((a, b) => a + b, 0);
+    refreshStats(); checkContracts();
+  }
+  draw();
+}
+
+/* ============================================================
+   rendering
+   ============================================================ */
+const cv = document.getElementById('board');
+const g = cv.getContext('2d');
+let cell = 16;
+
+function sizeCanvas() {
+  const wpx = cv.parentElement.clientWidth - 20;
+  cell = Math.max(8, Math.floor(wpx / W));
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = W * cell * dpr; cv.height = H * cell * dpr;
+  cv.style.height = (H * cell) + 'px';
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+addEventListener('resize', sizeCanvas);
+
+function draw() {
+  const c = cell;
+  g.fillStyle = '#030603';
+  g.fillRect(0, 0, W*c, H*c);
+
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = idx(x,y), px = x*c, py = y*c;
+    if (pher[i] > 0.02) {
+      g.fillStyle = 'rgba(0,255,120,' + (pher[i] * 0.22).toFixed(3) + ')';
+      g.fillRect(px, py, c, c);
+    }
+    if (wall[i]) {
+      g.fillStyle = '#0d1a12'; g.fillRect(px+1, py+1, c-2, c-2);
+    } else if (nest[i]) {
+      g.fillStyle = 'rgba(255,176,0,.20)'; g.fillRect(px, py, c, c);
+      g.strokeStyle = 'rgba(255,176,0,.55)'; g.lineWidth = 1;
+      g.strokeRect(px+.5, py+.5, c-1, c-1);
+    }
+    if (markActive && mark[i]) {
+      g.strokeStyle = 'rgba(255,176,0,.75)'; g.lineWidth = 1;
+      g.setLineDash([2,2]); g.strokeRect(px+1.5, py+1.5, c-3, c-3); g.setLineDash([]);
+    }
+    if (chip[i]) {
+      const n = chip[i], f = Math.min(1, n / 6);
+      const s = c * (0.34 + 0.42 * f);
+      g.fillStyle = 'rgba(47,212,120,' + (0.45 + 0.5*f).toFixed(2) + ')';
+      g.fillRect(px + (c-s)/2, py + (c-s)/2, s, s);
+      if (n >= 5) {
+        g.strokeStyle = 'rgba(180,255,205,.85)'; g.lineWidth = 1;
+        g.strokeRect(px + (c-s)/2 - 1.5, py + (c-s)/2 - 1.5, s+3, s+3);
+      }
+    }
+  }
+
+  for (const a of ants) {
+    const px = a.x*c + c/2, py = a.y*c + c/2, ang = a.d * Math.PI/2;
+    g.save(); g.translate(px, py); g.rotate(ang); g.scale(c/16, c/16);
+    g.strokeStyle = 'rgba(255,92,92,.9)'; g.lineWidth = 1;
+    for (let i = -1; i <= 1; i++) {
+      g.beginPath(); g.moveTo(i*2.2, 0); g.lineTo(i*2.2, 4.4); g.moveTo(i*2.2, 0); g.lineTo(i*2.2, -4.4); g.stroke();
+    }
+    g.beginPath(); g.moveTo(4.5,0); g.lineTo(7.5,2.2); g.moveTo(4.5,0); g.lineTo(7.5,-2.2); g.stroke();
+    g.fillStyle = a.loot ? '#ffb000' : '#c8443c';
+    g.beginPath(); g.ellipse(-3.4, 0, 3.6, 2.3, 0, 0, Math.PI*2); g.fill();
+    g.fillStyle = '#ff5c5c';
+    g.beginPath(); g.arc(2.6, 0, 2, 0, Math.PI*2); g.fill();
+    g.restore();
+  }
+
+  for (const t of termites) {
+    const px = t.x*c + c/2, py = t.y*c + c/2, a = t.d * Math.PI/2;
+    const sol = t.caste === 'soldier';
+    g.save(); g.translate(px, py); g.rotate(a); g.scale(c/16, c/16);
+    if (sol) g.scale(1.25, 1.25);
+    if (t.hp < maxHp(t)) g.globalAlpha = 0.55;
+    g.fillStyle = sol ? '#7ef0a8' : '#2fd478';
+    g.beginPath(); g.ellipse(-3, 0, 3.6, 2.1, 0, 0, Math.PI*2); g.fill();
+    g.fillStyle = sol ? '#eaffe0' : '#b4ffcd';
+    g.beginPath(); g.arc(2.4, 0, sol ? 2.1 : 1.8, 0, Math.PI*2); g.fill();
+    if (sol) {
+      g.strokeStyle = '#eaffe0'; g.lineWidth = 0.9;
+      g.beginPath(); g.moveTo(4, 0); g.lineTo(6.6, 1.9); g.moveTo(4, 0); g.lineTo(6.6, -1.9); g.stroke();
+    }
+    if (t.carry) { g.fillStyle = '#eaffe0'; g.fillRect(4.2, -1.6, 3.2, 3.2); }
+    g.restore();
+  }
+}
+
+/* ============================================================
+   UI — rules
+   ============================================================ */
+const $ = id => document.getElementById(id);
+
+function optList(list, sel, allowNone) {
+  let h = allowNone ? '<option value="none"' + (sel === 'none' || !sel ? ' selected' : '') + '>—</option>' : '';
+  for (const o of list) {
+    if (o.caste && o.caste !== activeCaste) continue;
+    const lock = !isUnlocked(o);
+    h += '<option value="' + o.id + '"' + (o.id === sel ? ' selected' : '') + (lock ? ' disabled' : '') + '>'
+       + (lock ? '🔒 ' : '') + o.label + '</option>';
+  }
+  return h;
+}
+
+function renderRules() {
+  const box = $('rulelist');
+  const prog = rules[activeCaste];
+  box.innerHTML = '';
+  prog.forEach((r, i) => {
+    const d = document.createElement('div');
+    d.className = 'rule';
+    d.innerHTML =
+      '<span class="rn">' + (i+1) + '</span><span class="kw">IF</span>' +
+      '<select data-f="c1">' + optList(CONDS, r.c1, false) + '</select>' +
+      '<span class="kw">AND</span>' +
+      '<select data-f="c2">' + optList(CONDS.filter(c => c.id !== 'always'), r.c2, true) + '</select>' +
+      '<span class="kw">→</span>' +
+      '<select data-f="act">' + optList(ACTS, r.act, false) + '</select>' +
+      '<span class="rspacer"></span>' +
+      '<button class="rbtn" data-a="up" title="move up">↑</button>' +
+      '<button class="rbtn" data-a="dn" title="move down">↓</button>' +
+      '<button class="rbtn" data-a="rm" title="delete">✕</button>';
+    d.querySelectorAll('select').forEach(sel => sel.addEventListener('change', () => {
+      prog[i][sel.dataset.f] = sel.value; save();
+    }));
+    d.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+      const a = b.dataset.a;
+      if (a === 'up' && i > 0) { [prog[i-1], prog[i]] = [prog[i], prog[i-1]]; }
+      if (a === 'dn' && i < prog.length-1) { [prog[i+1], prog[i]] = [prog[i], prog[i+1]]; }
+      if (a === 'rm') prog.splice(i, 1);
+      renderRules(); save();
+    }));
+    box.appendChild(d);
+  });
+  $('slot-used').textContent = prog.length;
+  $('slot-max').textContent = slotMax(activeCaste);
+  $('b-addrule').disabled = prog.length >= slotMax(activeCaste);
+  $('caste-note').innerHTML = activeCaste === 'soldier'
+    ? 'Soldiers ignore wood entirely. Same engine: top to bottom, <b>first match wins</b>. A soldier that only knows how to charge will chase one raider across the map while the rest loot the nest.'
+    : 'Your termites have no plan. Each tick, a termite reads this list top to bottom and does <b>the first rule that matches</b> — nothing else. Order is everything.';
+}
+
+function setCaste(c) {
+  if (c === 'soldier' && !S.unlocked.combat) return;
+  activeCaste = c;
+  $('c-worker').classList.toggle('on', c === 'worker');
+  $('c-soldier').classList.toggle('on', c === 'soldier');
+  renderRules();
+}
+$('c-worker').addEventListener('click', () => setCaste('worker'));
+$('c-soldier').addEventListener('click', () => setCaste('soldier'));
+
+$('b-addrule').addEventListener('click', () => {
+  const prog = rules[activeCaste];
+  if (prog.length >= slotMax(activeCaste)) return;
+  prog.push({ c1:'always', c2:'none', act: activeCaste === 'soldier' ? 'guard' : 'wander' });
+  renderRules(); save();
+});
+
+/* ============================================================
+   UI — upgrades
+   ============================================================ */
+const UPGRADES = [
+  { id:'worker', nm:'hatch worker',    ds:'one more termite on the floor',       base:20,  gr:1.16, max:60, run:addTermite },
+  { id:'speed',  nm:'metabolism',      ds:'the whole colony thinks faster',      base:140, gr:1.55, max:12 },
+  { id:'jaws',   nm:'mandibles',       ds:'+1 cellulose per chip delivered',     base:260, gr:1.85, max:10 },
+  { id:'slot',   nm:'rule slot',       ds:'one more line in your program',       base:180, gr:2.30, max:8 },
+  { id:'regrow', nm:'wood veins',      ds:'chips regrow across the floor faster',base:200, gr:1.65, max:10 },
+  { id:'queen',  nm:"queen's chamber", ds:'+10% of your rate while you are away',base:500, gr:1.75, max:5 },
+  { id:'soldier',nm:'hatch soldier',   ds:'tough, armed, and useless at harvesting',base:120, gr:1.30, max:40,
+    lock:'combat', run: () => addTermite('soldier') },
+  { id:'barracks',nm:'barracks',       ds:'every soldier hits harder and lives longer',base:400, gr:1.70, max:8,
+    lock:'combat' }
+];
+const cost = u => Math.floor(u.base * Math.pow(u.gr, S.upg[u.id]));
+
+function renderUpgrades() {
+  const box = $('upglist');
+  box.innerHTML = '';
+  for (const u of UPGRADES) {
+    if (u.lock && !S.unlocked[u.lock]) continue;
+    const lv = S.upg[u.id], maxed = lv >= u.max, c = cost(u);
+    const d = document.createElement('div');
+    d.className = 'row' + (maxed ? ' done' : '');
+    d.innerHTML =
+      '<div class="top"><span class="nm">' + u.nm + '</span><span class="lv">lv ' + lv + '/' + u.max + '</span>' +
+      '<span class="sp"></span></div><div class="ds">' + u.ds + '</div>';
+    const b = document.createElement('button');
+    b.className = 'btn';
+    b.textContent = maxed ? 'maxed' : ('buy · ' + c.toLocaleString() + ' cel');
+    b.disabled = maxed || S.cel < c;
+    b.addEventListener('click', () => {
+      const cc = cost(u);
+      if (S.cel < cc || S.upg[u.id] >= u.max) return;
+      S.cel -= cc; S.upg[u.id]++;
+      if (u.run) u.run();
+      log('bought <span class="hi">' + u.nm + '</span> (lv ' + S.upg[u.id] + ')');
+      renderUpgrades(); renderRules(); save();
+    });
+    d.appendChild(b);
+    box.appendChild(d);
+  }
+}
+
+/* ============================================================
+   contracts
+   ============================================================ */
+function pileCount(min) {
+  let n = 0;
+  for (let i = 0; i < N; i++) if (chip[i] >= min) n++;
+  return n;
+}
+function fieldChips() {
+  let f = 0;
+  for (let i = 0; i < N; i++) f += chip[i];
+  return f;
+}
+function marksFilled() {
+  let tot = 0, hit = 0;
+  for (let i = 0; i < N; i++) if (mark[i]) { tot++; if (chip[i] > 0) hit++; }
+  return { tot, hit };
+}
+
+const CONTRACTS = [
+  { id:'c1', nm:'FIRST HARVEST', goal:'deliver 10 chips to the nest',
+    hint:'Your termites grab chips but never bring them back. They need: at the nest → drop, and carrying → head to the nest. First match wins, so the specific rule ("carrying AND at the nest") must sit ABOVE the general one ("carrying").',
+    prog: () => S.delivered / 10, txt: () => S.delivered + '/10 delivered',
+    reward: { cel: 60, slot: 1 } },
+
+  { id:'c2', nm:'STEADY YIELD', goal:'sustain 45 chips/min',
+    hint:'Two levers: more workers (COLONY tab) and a shorter round trip. Termites that wander home waste most of their steps.',
+    prog: () => S.rate / 45, txt: () => S.rate + '/45 per min',
+    reward: { cel: 220, slot: 1 } },
+
+  { id:'c3', nm:'CLEAR THE FLOOR', goal:'strip the chamber down to under 15 chips',
+    hint:'Wood keeps regrowing, so this is a race: your colony has to out-eat the floor. Workers are the blunt instrument, but a tight loop matters more — every tick a termite spends wandering with full jaws is a tick it is not harvesting. Watch for termites that pick a chip up and then drift.',
+    prog: () => (90 - fieldChips()) / 75,
+    txt: () => fieldChips() + ' chips left · target under 15',
+    reward: { cel: 450, unlock: 'crowded' } },
+
+  { id:'c4', nm:'BLUEPRINT', goal:'put a chip on every marked cell',
+    hint:'The marked cells unlock a new sensor: "on marked cell". Chips set into a marked cell harden — nothing can pick them back up — so you only need: carrying AND on marked cell → drop, plus something that keeps loaded termites moving.',
+    onStart: () => { markActive = true; S.unlocked.blueprint = true; },
+    prog: () => { const m = marksFilled(); return m.hit / m.tot; },
+    txt: () => { const m = marksFilled(); return m.hit + '/' + m.tot + ' cells set'; },
+    reward: { cel: 900, unlock: 'pher' } },
+
+  { id:'c5', nm:'TRAILBLAZER', goal:'sustain 90 chips/min',
+    hint:'Pheromones are unlocked. A loaded termite that uses "haul + lay trail" paints the road home; an empty one that matches "on a trail → follow trail out" rides it straight back to the wood. That loop beats wandering by a mile.',
+    prog: () => S.rate / 90, txt: () => S.rate + '/90 per min',
+    reward: { cel: 2000, slot: 1 } },
+
+  { id:'c6', nm:'MEGACOLONY', goal:'30 workers and 10,000 cellulose banked',
+    hint:'Nothing clever left. Compound your rate and let it run.',
+    prog: () => Math.min(termites.length / 30, S.cel / 10000),
+    txt: () => termites.length + '/30 workers · ' + Math.floor(S.cel).toLocaleString() + '/10,000 cel',
+    reward: { cel: 0 } }
+];
+
+const SIEGES = [
+  { id:'s1', gap:34, nm:'SCOUTS',      count:3,  hp:5,  dmg:1, cap:120,
+    ds:'three ant scouts probing the perimeter',
+    hint:'Two rules is enough: enemy adjacent → strike the enemy, then enemy in sight → charge the enemy. Keep "hold the perimeter" last so idle soldiers stay near the nest instead of wandering off.',
+    reward:{ cel:250, soldiers:2, unlock:'wounded' } },
+  { id:'s2', gap:26, nm:'FORAGING PARTY', count:6, hp:9, dmg:2, cap:200,
+    ds:'six raiders, and they hit back',
+    hint:'Wounded soldiers die cheaply. Put "wounded AND enemy adjacent → fall back and heal" ABOVE your strike rule and they will rotate out of the line instead of dying in it.',
+    reward:{ cel:700, soldiers:2, sslot:1, unlock:'flee' } },
+  { id:'s3', gap:18, nm:'COLUMN',      count:11, hp:13, dmg:2, cap:350,
+    ds:'a marching column — they will reach the nest',
+    hint:'Workers are being slaughtered mid-haul. Give the WORKER program "enemy adjacent → run from the enemy" at the very top; a worker that survives is worth more than the chip it dropped.',
+    reward:{ cel:1800, soldiers:3, sslot:1 } },
+  { id:'s4', gap:12, nm:'SIEGE',       count:17, hp:18, dmg:3, cap:600,
+    ds:'they are not probing any more',
+    hint:'Chasing loses. Try "enemy in the nest → charge the enemy" above the rest so the whole guard collapses onto a breach, and let perimeter rules handle everything else.',
+    reward:{ cel:5000, soldiers:4, sslot:1 } },
+  { id:'s5', gap:8, nm:'THE SWARM',   count:26, hp:24, dmg:3, cap:1000,
+    ds:'the whole neighbouring colony',
+    hint:'No new tricks left — barracks levels, more soldiers, and a worker program that keeps banking cellulose while the line holds.',
+    reward:{ cel:15000, soldiers:6, sslot:1 } }
+];
+
+function siegeIdx() {
+  for (let i = 0; i < SIEGES.length; i++) if (!S.sdone[SIEGES[i].id]) return i;
+  return -1;
+}
+function startSiege(i) {
+  const sg = SIEGES[i];
+  siege.active = true; siege.id = sg.id; siege.queue = sg.count; siege.spawnAcc = 30;
+  siege.killed = 0; siege.total = sg.count; siege.stolen = 0; siege.escaped = 0;
+  siege.cap = sg.cap; siege.hp = sg.hp; siege.dmg = sg.dmg; siege.gap = sg.gap || 30;
+  log('<span class="am">⚔ ' + sg.nm + ' — raiders inbound</span>');
+  renderSieges();
+}
+function endSiege(won) {
+  const sg = SIEGES.find(x => x.id === siege.id);
+  siege.active = false;
+  ants = [];
+  if (won && sg) {
+    S.sdone[sg.id] = true;
+    if (sg.reward.cel) S.cel += sg.reward.cel;
+    if (sg.reward.sslot) S.bonusSoldierSlots += sg.reward.sslot;
+    if (sg.reward.unlock) S.unlocked[sg.reward.unlock] = true;
+    for (let k = 0; k < (sg.reward.soldiers || 0); k++) addTermite('soldier');
+    log('<span class="am">siege repelled:</span> <span class="hi">' + sg.nm + '</span> · +' +
+        sg.reward.cel + ' cel' + (sg.reward.soldiers ? ' · +' + sg.reward.soldiers + ' soldiers' : '') +
+        (sg.reward.unlock ? ' · unlocked ' + sg.reward.unlock : ''));
+  } else {
+    log('<span class="am">the raid got through</span> — ' + siege.escaped + ' raider' +
+        (siege.escaped === 1 ? '' : 's') + ' escaped with ' + siege.stolen +
+        ' cellulose. Every raider has to die. Rewrite and try again.');
+  }
+  renderRules(); renderUpgrades(); renderSieges(); save();
+}
+
+function renderSieges() {
+  const box = $('siegelist');
+  if (!box) return;
+  box.innerHTML = '';
+  const ai = siegeIdx();
+  SIEGES.forEach((sg, i) => {
+    const done = !!S.sdone[sg.id], locked = !done && i > ai, live = siege.active && siege.id === sg.id;
+    const d = document.createElement('div');
+    d.className = 'row' + (done ? ' done' : locked ? ' locked' : '');
+    const p = live ? siege.killed / siege.total : done ? 1 : 0;
+    d.innerHTML =
+      '<div class="top"><span class="nm">' + sg.nm + '</span><span class="sp"></span>' +
+      '<span class="lv">' + (done ? 'repelled' : locked ? 'locked' : live ? 'IN PROGRESS' : sg.count + ' raiders') + '</span></div>' +
+      '<div class="ds">' + sg.ds + '</div>' +
+      (locked ? '' :
+        '<div class="bar"><i style="width:' + (p*100) + '%"></i></div>' +
+        '<div class="goal">' + (done ? 'reward claimed'
+          : live ? siege.killed + '/' + siege.total + ' killed · ' + siege.escaped + ' escaped · ' + siege.stolen + ' cel lost'
+          : 'kill every raider — one that reaches an edge with loot ends the run') + '</div>');
+    if (!done && !locked && !siege.active) {
+      const b = document.createElement('button');
+      b.className = 'btn amber';
+      b.textContent = 'begin siege';
+      b.style.marginTop = '7px';
+      b.addEventListener('click', () => startSiege(i));
+      d.appendChild(b);
+    }
+    if (!done && !locked) {
+      const h = document.createElement('div');
+      h.innerHTML = '<button class="tiny" data-sh="' + i + '">show hint</button><div class="hint" id="sh' + i + '">' + sg.hint + '</div>';
+      d.appendChild(h);
+    }
+    box.appendChild(d);
+  });
+  box.querySelectorAll('.tiny').forEach(b => b.addEventListener('click', () => {
+    $('sh' + b.dataset.sh).classList.toggle('show');
+  }));
+}
+
+function unlockCombat() {
+  if (S.unlocked.combat) return;
+  S.unlocked.combat = true;
+  addTermite('soldier'); addTermite('soldier');
+  $('tab-sieges').style.display = '';
+  $('c-soldier').disabled = false;
+  $('c-soldier').textContent = 'SOLDIERS';
+  $('s-sol-wrap').style.display = '';
+  log('<span class="am">ants have found the colony.</span> two soldiers hatched · <span class="hi">SIEGES</span> tab open');
+  renderRules(); renderUpgrades(); renderSieges();
+}
+
+function activeIdx() {
+  for (let i = 0; i < CONTRACTS.length; i++) if (!S.done[CONTRACTS[i].id]) return i;
+  return -1;
+}
+
+function renderContracts() {
+  const box = $('conlist');
+  box.innerHTML = '';
+  const ai = activeIdx();
+  CONTRACTS.forEach((c, i) => {
+    const done = !!S.done[c.id], locked = !done && i > ai;
+    const d = document.createElement('div');
+    d.className = 'row' + (done ? ' done' : locked ? ' locked' : '');
+    const p = done ? 1 : locked ? 0 : Math.max(0, Math.min(1, c.prog()));
+    d.innerHTML =
+      '<div class="top"><span class="nm">' + c.nm + '</span><span class="sp"></span>' +
+      '<span class="lv">' + (done ? 'complete' : locked ? 'locked' : Math.floor(p*100) + '%') + '</span></div>' +
+      '<div class="ds">' + c.goal + '</div>' +
+      (locked ? '' : '<div class="bar"><i style="width:' + (p*100) + '%"></i></div>' +
+        '<div class="goal">' + (done ? 'reward claimed' : c.txt()) + '</div>') +
+      (done || locked ? '' :
+        '<button class="tiny" data-h="' + i + '">show hint</button><div class="hint" id="h' + i + '">' + c.hint + '</div>');
+    box.appendChild(d);
+  });
+  box.querySelectorAll('.tiny').forEach(b => b.addEventListener('click', () => {
+    $('h' + b.dataset.h).classList.toggle('show');
+  }));
+}
+
+let lastActive = -2;
+function checkContracts() {
+  const ai = activeIdx();
+  if (ai < 0) return;
+  const c = CONTRACTS[ai];
+  if (ai !== lastActive) {
+    lastActive = ai;
+    if (c.onStart) c.onStart();
+    renderRules();
+  }
+  if (c.prog() >= 1) {
+    S.done[c.id] = true;
+    if (c.reward.cel) S.cel += c.reward.cel;
+    if (c.reward.slot) S.bonusSlots += c.reward.slot;
+    if (c.reward.unlock) S.unlocked[c.reward.unlock] = true;
+    if (c.id === 'c4') markActive = false;
+    if (c.id === 'c2') unlockCombat();
+    log('<span class="am">contract complete:</span> <span class="hi">' + c.nm + '</span>' +
+        (c.reward.cel ? ' · +' + c.reward.cel + ' cel' : '') +
+        (c.reward.slot ? ' · +' + c.reward.slot + ' rule slot' : '') +
+        (c.reward.unlock ? ' · unlocked ' + c.reward.unlock : ''));
+    renderRules(); renderUpgrades(); save();
+  }
+  if ($('t-contracts').style.display !== 'none') renderContracts();
+}
+
+/* ============================================================
+   log, stats, tabs, controls
+   ============================================================ */
+function log(html) {
+  const box = $('log');
+  const d = document.createElement('div');
+  d.innerHTML = '<span style="color:var(--faint)">&gt;</span> ' + html;
+  box.appendChild(d);
+  while (box.children.length > 60) box.removeChild(box.firstChild);
+  box.scrollTop = box.scrollHeight;
+}
+let stallWarned = 0;
+function refreshStats() {
+  $('s-cel').textContent = Math.floor(S.cel).toLocaleString();
+  $('s-rate').textContent = S.rate;
+  $('s-pop').textContent = workerCount();
+  $('s-sol').textContent = soldierCount();
+  if (siege.active) {
+    $('s-siege').style.display = '';
+    $('s-siege-txt').textContent = siege.killed + '/' + siege.total + ' · lost ' + siege.stolen;
+    if ($('t-sieges').style.display !== 'none') renderSieges();
+  } else $('s-siege').style.display = 'none';
+  let f = 0; for (let i = 0; i < N; i++) f += chip[i];
+  $('s-chips').textContent = f;
+  if ($('t-colony').style.display !== 'none') renderUpgrades();
+  if (S.rate === 0 && f > 20 && S.ticks - stallWarned > 900 && S.delivered > 0) {
+    stallWarned = S.ticks;
+    log('<span class="am">no deliveries for a while</span> — a rule above is probably catching every termite first');
+  }
+}
+
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('on'));
+  t.classList.add('on');
+  ['rules','colony','contracts','sieges'].forEach(n => { $('t-' + n).style.display = n === t.dataset.t ? '' : 'none'; });
+  if (t.dataset.t === 'colony') renderUpgrades();
+  if (t.dataset.t === 'contracts') renderContracts();
+  if (t.dataset.t === 'sieges') renderSieges();
+}));
+
+$('b-pause').addEventListener('click', () => {
+  paused = !paused;
+  $('b-pause').textContent = paused ? '▶ resume' : '❚❚ pause';
+  $('b-pause').classList.toggle('on', paused);
+});
+[['b-1',1],['b-2',2],['b-4',4]].forEach(([id, v]) => $(id).addEventListener('click', () => {
+  speed = v;
+  ['b-1','b-2','b-4'].forEach(x => $(x).classList.remove('on'));
+  $(id).classList.add('on');
+}));
+$('b-reset').addEventListener('click', async () => {
+  if (!confirm('Wipe the colony and start over? Your program will be reset too.')) return;
+  await Store.wipe();
+  location.reload();
+});
+
+/* ============================================================
+   save / load
+   ============================================================ */
+let saveTimer = 0;
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(doSave, 400);
+}
+function doSave() {
+  S.lastSave = Date.now();
+  const data = {
+    v: 1, cel: S.cel, delivered: S.delivered, ticks: S.ticks, rate: S.rate,
+    upg: S.upg, unlocked: S.unlocked, done: S.done, sdone: S.sdone,
+    bonusSlots: S.bonusSlots, bonusSoldierSlots: S.bonusSoldierSlots,
+    lastSave: S.lastSave, rules, pop: workerCount(), sol: soldierCount(), markActive,
+    chips: Array.from(chip).join(''),
+    walls: Array.from(wall).join('')
+  };
+  Store.save(JSON.stringify(data));
+}
+setInterval(doSave, 15000);
+addEventListener('beforeunload', doSave);
+
+async function load() {
+  let raw = null;
+  try { raw = await Store.load(); } catch (e) {}
+  buildWorld();
+  if (!raw) {
+    for (let i = 0; i < 6; i++) addTermite('worker');
+    log('colony seeded · <span class="hi">6 workers</span>, one instinct, no plan');
+    log('open <span class="hi">CONTRACTS</span> for your first job');
+    return;
+  }
+  try {
+    const d = JSON.parse(raw);
+    Object.assign(S, {
+      cel: d.cel || 0, delivered: d.delivered || 0, ticks: d.ticks || 0, rate: d.rate || 0,
+      upg: Object.assign(S.upg, d.upg || {}), unlocked: d.unlocked || {}, done: d.done || {},
+      bonusSlots: d.bonusSlots || 0, bonusSoldierSlots: d.bonusSoldierSlots || 0,
+      sdone: d.sdone || {}, lastSave: d.lastSave || Date.now()
+    });
+    if (Array.isArray(d.rules) && d.rules.length) rules.worker = d.rules;      // v1 save
+    else if (d.rules && d.rules.worker) rules = { worker: d.rules.worker, soldier: d.rules.soldier || rules.soldier };
+    markActive = !!d.markActive;
+    if (typeof d.chips === 'string' && d.chips.length === N)
+      for (let i = 0; i < N; i++) chip[i] = +d.chips[i] || 0;
+    if (typeof d.walls === 'string' && d.walls.length === N)
+      for (let i = 0; i < N; i++) wall[i] = +d.walls[i] || 0;
+    const pop = Math.max(1, d.pop || 6);
+    for (let i = 0; i < pop; i++) addTermite('worker');
+    for (let i = 0; i < (d.sol || 0); i++) addTermite('soldier');
+    if (S.unlocked.combat) {
+      $('tab-sieges').style.display = '';
+      $('c-soldier').disabled = false;
+      $('c-soldier').textContent = 'SOLDIERS';
+      $('s-sol-wrap').style.display = '';
+    }
+
+    const away = Math.max(0, Math.min(8 * 3600, (Date.now() - S.lastSave) / 1000));
+    if (away > 60 && S.rate > 0) {
+      const eff = 0.5 + 0.1 * S.upg.queen;
+      const gain = Math.floor(S.rate / 60 * away * eff * (1 + S.upg.jaws));
+      if (gain > 0) {
+        S.cel += gain;
+        const mins = Math.floor(away / 60);
+        log('while you were away (' + (mins > 90 ? Math.floor(mins/60) + 'h' : mins + 'm') +
+            '): <span class="hi">+' + gain.toLocaleString() + ' cellulose</span>');
+      }
+    } else {
+      log('colony restored · <span class="hi">' + termites.length + ' workers</span>');
+    }
+  } catch (e) {
+    for (let i = 0; i < 6; i++) addTermite('worker');
+    log('<span class="am">save was unreadable — colony reseeded</span>');
+  }
+}
+
+/* ============================================================
+   boot
+   ============================================================ */
+(async function boot() {
+  await load();
+  sizeCanvas();
+  renderRules(); renderUpgrades(); renderContracts(); renderSieges(); refreshStats();
+  lastBucket = performance.now();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

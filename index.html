@@ -309,12 +309,23 @@
           first match wins. Harvest, then hold the line when the ants come.</p>
         <span class="badge online">playable</span>
       </a>
-      <a class="card wide" href="/wire/" rel="noopener">
+      <a class="card" href="/wire/" rel="noopener">
         <h3>wire</h3>
         <p>Traffic scope. Feed it <span class="mono">ss</span>, <span class="mono">conntrack</span> or
-          <span class="mono">/proc/net/dev</span> and it draws rx/tx as ASCII wires and a live peer map —
-          throughput, destinations, port folding, and a one-click GIF of the whole session. Parsing happens
-          in the browser.</p>
+          <span class="mono">/proc/net/dev</span> and it draws rx/tx as ASCII wires and a live peer map.</p>
+        <span class="badge online">online</span>
+      </a>
+      <a class="card" href="/probe/" rel="noopener">
+        <h3>probe</h3>
+        <p>Packet inspector and builder. Open a <span class="mono">pcap</span> or start from a template — every
+          header as an RFC bit diagram wired to the hex, checksums verified as you edit.</p>
+        <span class="badge online">online</span>
+      </a>
+      <a class="card wide" href="/trace/" rel="noopener">
+        <h3>trace</h3>
+        <p>The same capture, one level up. Packets get grouped into conversations and drawn as ladder diagrams,
+          with the patterns called out by name — three-way handshakes, ARP discovery, ping loss, DNS lookups,
+          retransmissions, resets. Tells you what happened, in sentences.</p>
         <span class="badge online">online</span>
       </a>
     </div>
@@ -326,6 +337,8 @@
     <p class="row">charts&nbsp;&nbsp;→ <a href="https://chart.termit.dev" rel="noopener">chart.termit.dev</a></p>
     <p class="row">colony&nbsp;&nbsp;→ <a href="/colony/">termit.dev/colony</a></p>
     <p class="row">wire&nbsp;&nbsp;&nbsp;&nbsp;→ <a href="/wire/">termit.dev/wire</a></p>
+    <p class="row">probe&nbsp;&nbsp;→ <a href="/probe/">termit.dev/probe</a></p>
+    <p class="row">trace&nbsp;&nbsp;→ <a href="/trace/">termit.dev/trace</a></p>
   </section>
 
   <footer>
@@ -523,6 +536,8 @@ const COMMANDS = {
     addLine('  <span class="bright">chart</span>       open the sankey studio');
     addLine('  <span class="bright">play</span>        write instincts for a termite colony');
     addLine('  <span class="bright">wire</span>        watch rx/tx as ascii');
+    addLine('  <span class="bright">probe</span>       take a packet apart, byte by byte');
+    addLine('  <span class="bright">trace</span>       see what a capture was actually doing');
     addLine('  <span class="bright">github</span>      the code lives here');
     addLine('  <span class="bright">uname</span> -a    system info');
     addLine('  <span class="bright">matrix</span>      toggle the rain');
@@ -530,10 +545,20 @@ const COMMANDS = {
     addLine('  <span class="dim">…and a few that aren\u2019t listed. rabbit holes exist.</span>');
   },
   ls() {
-    addLine('<span class="bright">diagram/</span>  <span class="bright">colony/</span>  <span class="bright">wire/</span>');
+    addLine('<span class="bright">diagram/</span>  <span class="bright">colony/</span>  <span class="bright">wire/</span>  <span class="bright">probe/</span>  <span class="bright">trace/</span>');
   },
   chart() {
     addLine('→ <a href="https://chart.termit.dev" rel="noopener">https://chart.termit.dev</a> <span class="dim">// sankey diagram studio</span>');
+  },
+  async trace() {
+    await typeLine('<span class="dim">replaying the conversation…</span>', 22);
+    addLine('→ <a href="/trace/">termit.dev/trace</a> <span class="dim">// SYN, SYN-ACK, and then regret</span>');
+    setTimeout(() => { location.href = '/trace/'; }, 1200);
+  },
+  async probe() {
+    await typeLine('<span class="dim">unfolding headers…</span>', 22);
+    addLine('→ <a href="/probe/">termit.dev/probe</a> <span class="dim">// it is always the MTU</span>');
+    setTimeout(() => { location.href = '/probe/'; }, 1200);
   },
   async wire() {
     await typeLine('<span class="dim">tapping the line…</span>', 22);
@@ -598,7 +623,9 @@ const COMMANDS = {
 };
 const ALIASES = { 'll': 'ls', 'ls projects': 'ls', 'open chart': 'chart', 'diagram': 'chart', 'uname -a': 'uname', 'термит': 'termit', 'ants': 'termit',
                   'colony': 'play', 'game': 'play', './colony': 'play',
-                  'traffic': 'wire', 'ss': 'wire', 'netstat': 'wire', 'tcpdump': 'wire' };
+                  'traffic': 'wire', 'ss': 'wire', 'netstat': 'wire',
+                  'tcpdump': 'probe', 'pcap': 'probe', 'wireshark': 'probe', 'packet': 'probe',
+                  'flows': 'trace', 'handshake': 'trace', 'syn': 'trace' };
 
 function esc(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

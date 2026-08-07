@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HANDSHAKE — how HTTPS actually works · termit.dev</title>
+<meta name="description" content="A playground for TLS: turn the crank on RSA and Diffie–Hellman by hand, run the real TLS 1.3 key schedule in your browser, then tune a handshake and watch it succeed or fail.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23050805'/%3E%3Crect x='7' y='14' width='18' height='13' rx='2' fill='%2300ff41'/%3E%3Cpath d='M11 14v-4a5 5 0 0110 0v4' stroke='%23ffb000' stroke-width='2.5' fill='none'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#050805; --panel:#0a120c; --panel-2:#071009; --line:#103d22;
+    --green:#00ff41; --dim:#1e9e5c; --faint:#0f5c33; --bright:#b4ffcd;
+    --amber:#ffb000; --red:#ff5c5c; --blue:#5b8ce6; --violet:#c07de8; --grey:#7d8a83;
+    --mono:'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--green); font-family:var(--mono); font-size:13px; line-height:1.6; }
+  ::selection { background:var(--green); color:#031007; }
+  .scanlines { position:fixed; inset:0; z-index:60; pointer-events:none;
+    background:repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0, rgba(0,0,0,0) 2px, rgba(0,0,0,.15) 3px);
+    mix-blend-mode:multiply; }
+
+  header { border-bottom:1px solid var(--line); background:var(--panel-2); padding:10px 16px;
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .logo { font-weight:800; font-size:16px; color:var(--bright); letter-spacing:.12em; }
+  .logo small { color:var(--dim); font-weight:400; font-size:11px; letter-spacing:0; margin-left:8px; }
+  header .sp { flex:1; }
+  .pill { font-size:11px; color:var(--dim); border:1px solid var(--line); border-radius:999px; padding:2px 10px; }
+  .pill.bad { color:var(--red); border-color:#533; }
+
+  nav { display:flex; gap:4px; padding:0 16px; border-bottom:1px solid var(--line); overflow-x:auto; background:var(--panel-2); }
+  nav button { background:none; border:none; border-bottom:2px solid transparent; color:var(--dim);
+    font-family:var(--mono); font-size:12px; padding:11px 14px; cursor:pointer; white-space:nowrap; }
+  nav button:hover { color:var(--bright); }
+  nav button.on { color:var(--green); border-bottom-color:var(--green); }
+  nav button .n { color:var(--faint); margin-right:6px; }
+
+  main { max-width:1120px; margin:0 auto; padding:16px 16px 60px; }
+  .stage { display:none; }
+  .stage.on { display:block; }
+  .lede { color:var(--dim); font-size:13px; margin-bottom:16px; max-width:74ch; }
+  .lede b { color:var(--bright); font-weight:400; }
+
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:9px; margin-bottom:14px; overflow:hidden; }
+  .panel h2 { font-size:10.5px; font-weight:500; letter-spacing:.2em; text-transform:uppercase; color:var(--dim);
+    padding:9px 12px; border-bottom:1px solid var(--line); background:var(--panel-2); }
+  .panel .body { padding:12px 14px; }
+  .cols { display:grid; grid-template-columns:280px minmax(0,1fr); gap:14px; align-items:start; }
+  @media (max-width:900px){ .cols { grid-template-columns:1fr; } }
+
+  .frm { display:grid; grid-template-columns:auto 1fr; gap:7px 9px; align-items:center; }
+  .frm label { color:var(--faint); font-size:11.5px; white-space:nowrap; }
+  .frm .full { grid-column:1/-1; }
+  input[type=text], input[type=number], select {
+    background:#061008; border:1px solid var(--line); color:var(--bright); font-family:var(--mono);
+    font-size:12px; padding:5px 8px; border-radius:5px; width:100%; }
+  input:focus, select:focus { outline:none; border-color:var(--green); }
+  input.bad { border-color:var(--red); color:var(--red); }
+  .btn { background:transparent; border:1px solid var(--line); color:var(--green); font-family:var(--mono);
+    font-size:11.5px; padding:6px 12px; border-radius:6px; cursor:pointer; }
+  .btn:hover:not(:disabled) { border-color:var(--green); background:rgba(0,255,65,.08); }
+  .btn:disabled { opacity:.4; cursor:not-allowed; }
+  .btn.on { background:rgba(0,255,65,.14); border-color:var(--green); }
+  .btn.amber { color:var(--amber); } .btn.amber:hover:not(:disabled){ border-color:var(--amber); background:rgba(255,176,0,.1); }
+  .btn.red { color:var(--red); } .btn.red.on { background:rgba(255,92,92,.14); border-color:var(--red); }
+  .row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:10px; }
+  .lbl { color:var(--faint); font-size:11px; }
+
+  .calc { font-size:12.5px; }
+  .calc div { padding:3px 0; border-bottom:1px dashed #0d2517; word-break:break-all; }
+  .calc div:last-child { border-bottom:none; }
+  .calc .k { color:var(--faint); display:inline-block; min-width:132px; }
+  .calc .v { color:var(--bright); }
+  .calc .g { color:var(--green); }
+  .calc .a { color:var(--amber); }
+  .calc .r { color:var(--red); }
+  .calc .note { color:var(--faint); font-size:11px; }
+  .mono-out { background:var(--panel-2); border:1px solid var(--line); border-radius:6px; padding:8px 10px;
+    font-size:11.5px; color:var(--bright); word-break:break-all; white-space:pre-wrap; }
+  table { width:100%; border-collapse:collapse; font-size:11.5px; margin-top:6px; }
+  th { color:var(--faint); font-weight:400; text-align:left; padding:3px 7px; border-bottom:1px solid var(--line); }
+  td { padding:2px 7px; color:var(--dim); border-bottom:1px dashed #0d2517; word-break:break-all; }
+  td b { color:var(--bright); font-weight:400; }
+  .scroll { max-height:280px; overflow-y:auto; }
+  .scroll::-webkit-scrollbar { width:7px; } .scroll::-webkit-scrollbar-thumb { background:var(--faint); border-radius:4px; }
+
+  svg { display:block; width:100%; height:auto; }
+  .legend { display:flex; gap:14px; flex-wrap:wrap; padding:6px 12px 10px; color:var(--faint); font-size:10.5px; }
+  .facts li { list-style:none; color:var(--dim); font-size:12px; padding:3px 0 3px 16px; position:relative; }
+  .facts li::before { content:"▸"; position:absolute; left:2px; color:var(--faint); }
+  .facts li.ok::before { color:var(--green); } .facts li.warn::before { color:var(--amber); }
+  .facts li.bad::before { color:var(--red); }
+  .facts li b { color:var(--bright); font-weight:400; }
+  footer { color:var(--faint); font-size:11px; text-align:center; padding:10px 16px 30px; }
+  footer a { color:var(--dim); }
+</style>
+</head>
+<body>
+<div class="scanlines"></div>
+
+<header>
+  <div class="logo">HANDSHAKE<small>how HTTPS actually works · termit.dev</small></div>
+  <div class="sp"></div>
+  <span class="pill" id="crypto-pill">checking WebCrypto…</span>
+</header>
+
+<nav>
+  <button class="on" data-s="rsa"><span class="n">01</span>RSA by hand</button>
+  <button data-s="dh"><span class="n">02</span>Diffie–Hellman</button>
+  <button data-s="sched"><span class="n">03</span>Key schedule</button>
+  <button data-s="flow"><span class="n">04</span>The handshake</button>
+  <button data-s="cert"><span class="n">05</span>Certificates</button>
+</nav>
+
+<main>
+
+<!-- ============ 01 RSA ============ -->
+<section class="stage on" id="s-rsa">
+  <p class="lede">RSA rests on one asymmetry: multiplying two primes is instant, and pulling them back apart is not.
+    Everything else is arithmetic you can do here with numbers small enough to read. <b>Nothing below is a
+    simulation</b> — the modular exponentiation is genuinely being computed, just with toy-sized primes.</p>
+
+  <div class="cols">
+    <div class="panel">
+      <h2>parameters</h2>
+      <div class="body">
+        <div class="frm">
+          <label>prime p</label><input type="number" id="r-p" value="61">
+          <label>prime q</label><input type="number" id="r-q" value="53">
+          <label>exponent e</label><input type="number" id="r-e" value="17">
+          <label>message m</label><input type="number" id="r-m" value="42">
+        </div>
+        <div class="row">
+          <button class="btn" id="r-random">random primes</button>
+          <button class="btn" id="r-real">realistic sizes</button>
+        </div>
+        <p class="calc note" style="margin-top:10px">p and q must be prime and different. m must be smaller than
+          n, which is why real RSA encrypts a key, not a message.</p>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel">
+        <h2>the key pair</h2>
+        <div class="body calc" id="r-key"></div>
+      </div>
+      <div class="panel">
+        <h2>encrypt · decrypt · sign</h2>
+        <div class="body calc" id="r-ops"></div>
+      </div>
+      <div class="panel">
+        <h2>modular exponentiation, step by step</h2>
+        <div class="body">
+          <p class="calc note" style="margin-bottom:6px">Nobody computes m<sup>e</sup> and then reduces — the
+            number would be astronomical. Square-and-multiply walks the exponent's bits instead.</p>
+          <div class="scroll"><table id="r-pow"></table></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>break it</h2>
+        <div class="body">
+          <p class="calc note">The public key hands out n. Recover p and q and the private key falls out.</p>
+          <div class="row">
+            <button class="btn amber" id="r-factor">factor n by trial division</button>
+          </div>
+          <div class="calc" id="r-break" style="margin-top:8px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 02 DH ============ -->
+<section class="stage" id="s-dh">
+  <p class="lede">RSA can encrypt a key, but if the server's private key ever leaks, every past conversation
+    decrypts. Diffie–Hellman fixes that: the two sides build a shared secret out of numbers they throw away
+    afterwards, and the wire never carries it. That property is <b>forward secrecy</b>, and it is why TLS 1.3
+    dropped RSA key exchange entirely.</p>
+
+  <div class="cols">
+    <div class="panel">
+      <h2>parameters</h2>
+      <div class="body">
+        <div class="frm">
+          <label>modulus p</label><input type="number" id="d-p" value="2357">
+          <label>generator g</label><input type="number" id="d-g" value="2">
+          <label>client secret a</label><input type="number" id="d-a" value="1751">
+          <label>server secret b</label><input type="number" id="d-b" value="1200">
+        </div>
+        <div class="row"><button class="btn" id="d-roll">roll new secrets</button></div>
+        <p class="calc note" style="margin-top:10px">a and b never leave their machines. Real TLS uses elliptic
+          curves for this, which is the same idea with a harder-to-picture group.</p>
+      </div>
+    </div>
+    <div>
+      <div class="panel">
+        <h2>the exchange</h2>
+        <div class="body calc" id="d-out"></div>
+      </div>
+      <div class="panel">
+        <h2>on the wire</h2>
+        <div id="d-svg" style="padding:6px 10px 2px"></div>
+        <div class="legend"><span style="color:var(--amber)">━ visible to anyone</span>
+          <span style="color:var(--green)">━ never transmitted</span></div>
+      </div>
+      <div class="panel">
+        <h2>break it</h2>
+        <div class="body">
+          <p class="calc note">The eavesdropper has p, g, A and B. Finding a from A is the discrete logarithm
+            problem — here it is small enough to brute force.</p>
+          <div class="row"><button class="btn amber" id="d-crack">solve the discrete log</button></div>
+          <div class="calc" id="d-break" style="margin-top:8px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 03 key schedule ============ -->
+<section class="stage" id="s-sched">
+  <p class="lede">This page runs the <b>real TLS 1.3 key schedule</b> in your browser using WebCrypto: a genuine
+    P-256 ECDH agreement, then HKDF-Extract and HKDF-Expand-Label exactly as RFC 8446 specifies, ending in an
+    AES-GCM record you can tamper with. Every value below came out of your own machine's crypto.</p>
+
+  <div class="cols">
+    <div class="panel">
+      <h2>controls</h2>
+      <div class="body">
+        <div class="frm">
+          <label>curve</label>
+          <select id="k-curve"><option>P-256</option><option>P-384</option></select>
+          <label>hash</label>
+          <select id="k-hash"><option>SHA-256</option><option>SHA-384</option></select>
+          <label>plaintext</label>
+          <input type="text" id="k-msg" value="GET / HTTP/1.1">
+        </div>
+        <div class="row">
+          <button class="btn" id="k-run">run the exchange</button>
+          <button class="btn red" id="k-tamper">flip a bit in transit</button>
+        </div>
+        <p class="calc note" style="margin-top:10px">Flip a bit and the GCM tag stops matching, which is what
+          "authenticated encryption" buys you: a modified record is not decrypted-wrongly, it is refused.</p>
+      </div>
+    </div>
+    <div>
+      <div class="panel">
+        <h2>ecdhe</h2>
+        <div class="body calc" id="k-ecdh"></div>
+      </div>
+      <div class="panel">
+        <h2>hkdf ladder</h2>
+        <div class="body"><table id="k-sched"></table></div>
+      </div>
+      <div class="panel">
+        <h2>a protected record</h2>
+        <div class="body calc" id="k-rec"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 04 handshake ============ -->
+<section class="stage" id="s-flow">
+  <p class="lede">Now the whole thing in order. Change the settings and the ladder redraws — round trips,
+    what is encrypted, and what someone tapping the wire still gets to see.</p>
+
+  <div class="cols">
+    <div>
+      <div class="panel">
+        <h2>connection settings</h2>
+        <div class="body">
+          <div class="frm">
+            <label>version</label>
+            <select id="f-ver"><option value="13">TLS 1.3</option><option value="12">TLS 1.2</option></select>
+            <label>key exchange</label>
+            <select id="f-kx"><option value="ecdhe">ECDHE (forward secret)</option><option value="rsa">RSA (no PFS)</option></select>
+            <label>session</label>
+            <select id="f-sess">
+              <option value="full">full handshake</option>
+              <option value="resume">resumed (PSK)</option>
+              <option value="zero">resumed + 0-RTT</option>
+            </select>
+            <label>client cert</label>
+            <select id="f-cc"><option value="no">not requested</option><option value="yes">mutual TLS</option></select>
+            <label>hide SNI</label>
+            <select id="f-ech"><option value="no">plain SNI</option><option value="yes">encrypted (ECH)</option></select>
+          </div>
+          <div class="row">
+            <span class="lbl">break something</span>
+          </div>
+          <div class="row">
+            <button class="btn red" id="f-exp">expired cert</button>
+            <button class="btn red" id="f-name">wrong hostname</button>
+            <button class="btn red" id="f-self">self-signed</button>
+            <button class="btn red" id="f-down">downgrade attack</button>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>what a wiretap sees</h2>
+        <div class="body"><ul class="facts" id="f-tap"></ul></div>
+      </div>
+    </div>
+    <div>
+      <div class="panel">
+        <h2 id="f-title">ladder</h2>
+        <div id="f-svg" style="padding:6px 10px 2px"></div>
+        <div class="legend">
+          <span style="color:var(--amber)">━ cleartext</span>
+          <span style="color:var(--violet)">━ handshake keys</span>
+          <span style="color:var(--green)">━ application keys</span>
+          <span style="color:var(--red)">━ fails here</span>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>notes</h2>
+        <div class="body"><ul class="facts" id="f-notes"></ul></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 05 certificates ============ -->
+<section class="stage" id="s-cert">
+  <p class="lede">Key agreement stops eavesdropping but not impersonation — you would happily agree a key with an
+    attacker. Certificates fix identity: a chain of signatures ending at a root your machine already trusts.
+    The signing below is <b>real ECDSA</b>, done in your browser.</p>
+
+  <div class="cols">
+    <div class="panel">
+      <h2>the chain</h2>
+      <div class="body">
+        <div class="frm">
+          <label>hostname</label><input type="text" id="c-host" value="termit.dev">
+        </div>
+        <div class="row">
+          <button class="btn" id="c-run">issue &amp; verify</button>
+          <button class="btn red" id="c-tamper">tamper with the leaf</button>
+        </div>
+        <p class="calc note" style="margin-top:10px">Tampering changes one byte of the signed data. The CA's
+          signature was over the original, so verification fails — which is the entire mechanism.</p>
+      </div>
+    </div>
+    <div>
+      <div class="panel">
+        <h2>issuance</h2>
+        <div class="body calc" id="c-out"></div>
+      </div>
+      <div class="panel">
+        <h2>what your browser checks</h2>
+        <div class="body"><ul class="facts" id="c-checks"></ul></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>every number on this page was computed locally · nothing is sent anywhere · <a href="/">termit.dev</a></footer>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const hex = u8 => [...u8].map(b => b.toString(16).padStart(2,'0')).join('');
+const enc = new TextEncoder();
+const cut = (s, n) => s.length > n ? s.slice(0, n) + '…' : s;
+
+/* nav */
+document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.remove('on'));
+  document.querySelectorAll('.stage').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  $('s-' + b.dataset.s).classList.add('on');
+}));
+
+/* ============================================================
+   01 — RSA
+   ============================================================ */
+const isPrime = n => {
+  n = BigInt(n);
+  if (n < 2n) return false;
+  for (let i = 2n; i * i <= n; i++) if (n % i === 0n) return false;
+  return true;
+};
+const gcd = (a, b) => { while (b) { [a, b] = [b, a % b]; } return a; };
+function egcd(a, b) {
+  if (b === 0n) return { g: a, x: 1n, y: 0n };
+  const r = egcd(b, a % b);
+  return { g: r.g, x: r.y, y: r.x - (a / b) * r.y };
+}
+function modInv(a, m) {
+  const r = egcd(((a % m) + m) % m, m);
+  if (r.g !== 1n) return null;
+  return ((r.x % m) + m) % m;
+}
+function modPowSteps(base, expo, mod) {
+  const steps = [];
+  let result = 1n, b = base % mod, e = expo, bit = 0;
+  while (e > 0n) {
+    const take = e & 1n;
+    steps.push({ bit, e: e.toString(2), take: take === 1n, base: b, before: result,
+      after: take === 1n ? (result * b) % mod : result });
+    if (take === 1n) result = (result * b) % mod;
+    b = (b * b) % mod;
+    e >>= 1n;
+    bit++;
+    if (bit > 64) break;
+  }
+  return { result, steps };
+}
+const SMALLP = [11,13,17,19,23,29,31,37,41,43,47,53,59,61,67,71,73,79,83,89,97,101,103,107,109,113,127,131,137,139,149,151,157,163,167,173,179,181,191,193,197,199];
+
+function rsa() {
+  const p = BigInt($('r-p').value || 0), q = BigInt($('r-q').value || 0);
+  const e = BigInt($('r-e').value || 0);
+  let m = BigInt($('r-m').value || 0);
+  const K = $('r-key'), O = $('r-ops');
+  const bad = (el, msg) => { el.innerHTML = '<div class="r">' + msg + '</div>'; };
+  [['r-p',p],['r-q',q]].forEach(([id, v]) => $(id).classList.toggle('bad', !isPrime(v)));
+  if (!isPrime(p) || !isPrime(q)) { bad(K, 'p and q must both be prime.'); O.innerHTML = ''; return; }
+  if (p === q) { bad(K, 'p and q must be different, or n gives itself away.'); O.innerHTML = ''; return; }
+
+  const n = p * q, phi = (p - 1n) * (q - 1n);
+  const ok = e > 1n && e < phi && gcd(e, phi) === 1n;
+  $('r-e').classList.toggle('bad', !ok);
+  const d = ok ? modInv(e, phi) : null;
+
+  K.innerHTML =
+    '<div><span class="k">n = p × q</span><span class="v">' + p + ' × ' + q + ' = <span class="g">' + n + '</span></span></div>' +
+    '<div><span class="k">φ(n) = (p−1)(q−1)</span><span class="v">' + (p-1n) + ' × ' + (q-1n) + ' = ' + phi + '</span></div>' +
+    '<div><span class="k">e</span><span class="v">' + e + (ok ? ' <span class="note">coprime with φ(n) ✓</span>'
+      : ' <span class="r">must be 1 &lt; e &lt; φ(n) and share no factor with it</span>') + '</span></div>' +
+    (d !== null ? '<div><span class="k">d = e⁻¹ mod φ(n)</span><span class="v"><span class="g">' + d +
+      '</span> <span class="note">because ' + e + ' × ' + d + ' mod ' + phi + ' = ' + ((e*d)%phi) + '</span></span></div>' : '') +
+    '<div style="margin-top:6px"><span class="k">public key</span><span class="v a">(n=' + n + ', e=' + e + ')</span></div>' +
+    (d !== null ? '<div><span class="k">private key</span><span class="v g">(n=' + n + ', d=' + d + ')</span></div>' : '');
+
+  if (d === null) { O.innerHTML = ''; $('r-pow').innerHTML = ''; return; }
+  if (m >= n) { m = m % n; $('r-m').value = m.toString(); }
+
+  const encd = modPowSteps(m, e, n);
+  const decd = modPowSteps(encd.result, d, n);
+  const sig = modPowSteps(m, d, n);
+  const ver = modPowSteps(sig.result, e, n);
+
+  O.innerHTML =
+    '<div><span class="k">encrypt</span><span class="v">c = m<sup>e</sup> mod n = ' + m + '<sup>' + e + '</sup> mod ' + n +
+      ' = <span class="a">' + encd.result + '</span></span></div>' +
+    '<div><span class="k">decrypt</span><span class="v">m = c<sup>d</sup> mod n = ' + encd.result + '<sup>' + d + '</sup> mod ' + n +
+      ' = <span class="g">' + decd.result + '</span>' + (decd.result === m ? ' ✓ back to the original' : ' ✗') + '</span></div>' +
+    '<div style="margin-top:6px"><span class="k">sign</span><span class="v">s = m<sup>d</sup> mod n = <span class="a">' +
+      sig.result + '</span> <span class="note">only the private key can produce this</span></span></div>' +
+    '<div><span class="k">verify</span><span class="v">s<sup>e</sup> mod n = <span class="g">' + ver.result + '</span>' +
+      (ver.result === m ? ' ✓ matches m, so the holder of d signed it' : ' ✗') + '</span></div>' +
+    '<div class="note" style="margin-top:6px">Encryption and signing are the same operation with the exponents swapped. ' +
+      'Real RSA pads the message first; textbook RSA like this is malleable.</div>';
+
+  $('r-pow').innerHTML = '<tr><th>bit</th><th>exponent left</th><th>bit set?</th><th>running value</th><th>base²</th></tr>' +
+    encd.steps.map(s => '<tr><td>' + s.bit + '</td><td>' + s.e + '</td><td>' + (s.take ? '<b>yes → multiply</b>' : 'no → skip') +
+      '</td><td><b>' + s.after + '</b></td><td>' + s.base + '</td></tr>').join('') +
+    '<tr><td colspan="5" style="color:var(--green)">result: ' + encd.result + ' — ' + encd.steps.length +
+      ' squarings instead of ' + e + ' multiplications</td></tr>';
+}
+$('r-random').addEventListener('click', () => {
+  const a = SMALLP[(Math.random()*SMALLP.length)|0];
+  let b = SMALLP[(Math.random()*SMALLP.length)|0];
+  while (b === a) b = SMALLP[(Math.random()*SMALLP.length)|0];
+  $('r-p').value = a; $('r-q').value = b;
+  const phi = BigInt(a-1) * BigInt(b-1);
+  let e = 3n;
+  while (gcd(e, phi) !== 1n) e += 2n;
+  $('r-e').value = e.toString();
+  $('r-m').value = ((a*b) > 60 ? 42 : 7);
+  rsa(); $('r-break').innerHTML = '';
+});
+$('r-real').addEventListener('click', () => {
+  $('r-break').innerHTML =
+    '<div class="note">A real RSA key uses primes of about <span class="v">1024 bits</span> each — roughly 300 ' +
+    'decimal digits — giving a 2048-bit n. Trial division on that would need around 10<sup>150</sup> steps. ' +
+    'The best known method, the general number field sieve, is still far beyond reach: the largest RSA modulus ' +
+    'ever factored publicly is 829 bits, and it took about 2700 core-years. That gap is the whole product.</div>';
+});
+$('r-factor').addEventListener('click', () => {
+  const p = BigInt($('r-p').value), q = BigInt($('r-q').value), n = p * q;
+  let ops = 0, found = null;
+  const t0 = performance.now();
+  for (let i = 2n; i * i <= n; i++) { ops++; if (n % i === 0n) { found = i; break; } }
+  const dt = performance.now() - t0;
+  const other = found ? n / found : 0n;
+  const phi = found ? (found - 1n) * (other - 1n) : 0n;
+  const d = found ? modInv(BigInt($('r-e').value), phi) : null;
+  $('r-break').innerHTML = found
+    ? '<div><span class="k">n</span><span class="v">' + n + '</span></div>' +
+      '<div><span class="k">factors found</span><span class="v r">' + found + ' × ' + other + '</span></div>' +
+      '<div><span class="k">divisions tried</span><span class="v">' + ops + ' in ' + dt.toFixed(1) + ' ms</span></div>' +
+      '<div><span class="k">private key</span><span class="v r">d = ' + d + ' — recovered from the public key alone</span></div>' +
+      '<div class="note">Scale the primes up and this loop stops finishing. That is the only thing protecting the key.</div>'
+    : '<div class="r">no factor found</div>';
+});
+['r-p','r-q','r-e','r-m'].forEach(id => $(id).addEventListener('input', rsa));
+
+/* ============================================================
+   02 — Diffie–Hellman
+   ============================================================ */
+function dh() {
+  const p = BigInt($('d-p').value || 0), g = BigInt($('d-g').value || 0);
+  const a = BigInt($('d-a').value || 0), b = BigInt($('d-b').value || 0);
+  const O = $('d-out');
+  $('d-p').classList.toggle('bad', !isPrime(p));
+  if (!isPrime(p) || g < 2n) { O.innerHTML = '<div class="r">p must be prime and g at least 2.</div>'; $('d-svg').innerHTML=''; return; }
+  const A = modPowSteps(g, a, p).result;
+  const B = modPowSteps(g, b, p).result;
+  const s1 = modPowSteps(B, a, p).result;
+  const s2 = modPowSteps(A, b, p).result;
+  O.innerHTML =
+    '<div><span class="k">public p, g</span><span class="v a">' + p + ', ' + g + ' <span class="note">agreed in the open</span></span></div>' +
+    '<div><span class="k">client keeps a</span><span class="v g">' + a + '</span></div>' +
+    '<div><span class="k">server keeps b</span><span class="v g">' + b + '</span></div>' +
+    '<div><span class="k">client sends A</span><span class="v a">g<sup>a</sup> mod p = ' + A + '</span></div>' +
+    '<div><span class="k">server sends B</span><span class="v a">g<sup>b</sup> mod p = ' + B + '</span></div>' +
+    '<div><span class="k">client computes</span><span class="v g">B<sup>a</sup> mod p = ' + s1 + '</span></div>' +
+    '<div><span class="k">server computes</span><span class="v g">A<sup>b</sup> mod p = ' + s2 + '</span></div>' +
+    '<div><span class="k">shared secret</span><span class="v ' + (s1 === s2 ? 'g' : 'r') + '">' + s1 +
+      (s1 === s2 ? ' — both sides landed on the same number without ever sending it' : ' ≠ ' + s2) + '</span></div>' +
+    '<div class="note" style="margin-top:6px">(g<sup>b</sup>)<sup>a</sup> and (g<sup>a</sup>)<sup>b</sup> are both g<sup>ab</sup>. ' +
+      'That symmetry is the whole trick.</div>';
+
+  const W = 900, H = 220, cx = 150, sx = 750;
+  let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" font-family="' + "'JetBrains Mono',monospace" + '">';
+  s += '<rect width="' + W + '" height="' + H + '" fill="#050805"/>';
+  s += '<text x="' + cx + '" y="20" font-size="12" fill="#b4ffcd" text-anchor="middle">client</text>';
+  s += '<text x="' + sx + '" y="20" font-size="12" fill="#b4ffcd" text-anchor="middle">server</text>';
+  [cx, sx].forEach(x => s += '<line x1="' + x + '" y1="30" x2="' + x + '" y2="' + (H-14) + '" stroke="#103d22"/>');
+  s += '<text x="' + (cx-10) + '" y="56" font-size="11" fill="#00ff41" text-anchor="end">a = ' + a + ' (secret)</text>';
+  s += '<text x="' + (sx+10) + '" y="56" font-size="11" fill="#00ff41">b = ' + b + ' (secret)</text>';
+  const arrow = (y, from, to, label) => {
+    const dir = to > from ? 1 : -1, ax = to - dir*8;
+    return '<line x1="' + from + '" y1="' + y + '" x2="' + ax + '" y2="' + y + '" stroke="#ffb000" stroke-width="1.8"/>' +
+      '<path d="M' + to + ' ' + y + ' L' + ax + ' ' + (y-4) + ' L' + ax + ' ' + (y+4) + ' Z" fill="#ffb000"/>' +
+      '<text x="' + ((from+to)/2) + '" y="' + (y-7) + '" font-size="11" fill="#ffb000" text-anchor="middle">' + label + '</text>';
+  };
+  s += arrow(100, cx, sx, 'A = ' + A);
+  s += arrow(140, sx, cx, 'B = ' + B);
+  s += '<text x="' + (cx-10) + '" y="182" font-size="11" fill="#00ff41" text-anchor="end">B^a = ' + s1 + '</text>';
+  s += '<text x="' + (sx+10) + '" y="182" font-size="11" fill="#00ff41">A^b = ' + s2 + '</text>';
+  s += '<text x="' + W/2 + '" y="208" font-size="11" fill="#1e9e5c" text-anchor="middle">' +
+    'the wire carried ' + A + ' and ' + B + ' — never ' + s1 + '</text>';
+  s += '</svg>';
+  $('d-svg').innerHTML = s;
+}
+$('d-roll').addEventListener('click', () => {
+  const p = BigInt($('d-p').value);
+  $('d-a').value = (2 + Math.floor(Math.random() * (Number(p) - 3))).toString();
+  $('d-b').value = (2 + Math.floor(Math.random() * (Number(p) - 3))).toString();
+  dh(); $('d-break').innerHTML = '';
+});
+$('d-crack').addEventListener('click', () => {
+  const p = BigInt($('d-p').value), g = BigInt($('d-g').value), a = BigInt($('d-a').value);
+  const A = modPowSteps(g, a, p).result;
+  let cur = 1n, found = null, ops = 0;
+  const t0 = performance.now();
+  for (let x = 1n; x < p; x++) { cur = (cur * g) % p; ops++; if (cur === A) { found = x; break; } }
+  const dt = performance.now() - t0;
+  $('d-break').innerHTML = found !== null
+    ? '<div><span class="k">recovered a</span><span class="v r">' + found + '</span></div>' +
+      '<div><span class="k">exponents tried</span><span class="v">' + ops + ' in ' + dt.toFixed(1) + ' ms</span></div>' +
+      '<div class="note">Real TLS uses a 256-bit curve group, where this loop would need about 2<sup>128</sup> steps ' +
+      'even with the best known algorithms. Same attack, hopelessly out of reach.</div>'
+    : '<div class="r">not found</div>';
+});
+['d-p','d-g','d-a','d-b'].forEach(id => $(id).addEventListener('input', dh));
+
+/* ============================================================
+   03 — the real TLS 1.3 key schedule, via WebCrypto
+   ============================================================ */
+const SUB = (typeof crypto !== 'undefined' && crypto.subtle) ? crypto.subtle : null;
+$('crypto-pill').textContent = SUB ? 'WebCrypto available' : 'WebCrypto unavailable — stages 3 and 5 need https';
+if (!SUB) $('crypto-pill').className = 'pill bad';
+
+async function hmac(hash, key, data) {
+  const k = await SUB.importKey('raw', key, { name: 'HMAC', hash }, false, ['sign']);
+  return new Uint8Array(await SUB.sign('HMAC', k, data));
+}
+const hlen = h => h === 'SHA-384' ? 48 : 32;
+async function hkdfExtract(hash, salt, ikm) { return hmac(hash, salt, ikm); }
+async function hkdfExpand(hash, prk, info, len) {
+  const out = new Uint8Array(len);
+  let t = new Uint8Array(0), pos = 0, c = 1;
+  while (pos < len) {
+    const input = new Uint8Array(t.length + info.length + 1);
+    input.set(t, 0); input.set(info, t.length); input[t.length + info.length] = c++;
+    t = await hmac(hash, prk, input);
+    out.set(t.slice(0, Math.min(t.length, len - pos)), pos);
+    pos += t.length;
+  }
+  return out;
+}
+// HKDF-Expand-Label from RFC 8446 §7.1
+async function expandLabel(hash, secret, label, ctx, len) {
+  const full = enc.encode('tls13 ' + label);
+  const info = new Uint8Array(2 + 1 + full.length + 1 + ctx.length);
+  info[0] = len >> 8; info[1] = len & 255;
+  info[2] = full.length; info.set(full, 3);
+  info[3 + full.length] = ctx.length; info.set(ctx, 4 + full.length);
+  return hkdfExpand(hash, secret, info, len);
+}
+async function deriveSecret(hash, secret, label, msgs) {
+  const h = new Uint8Array(await SUB.digest(hash, msgs));
+  return expandLabel(hash, secret, label, h, hlen(hash));
+}
+
+let REC = null, TAMPER = false;
+async function runSchedule() {
+  if (!SUB) { $('k-ecdh').innerHTML = '<div class="r">WebCrypto needs a secure context (https or localhost).</div>'; return; }
+  const curve = $('k-curve').value, hash = $('k-hash').value;
+  const rows = [];
+  try {
+    const alg = { name: 'ECDH', namedCurve: curve };
+    const client = await SUB.generateKey(alg, true, ['deriveBits']);
+    const server = await SUB.generateKey(alg, true, ['deriveBits']);
+    const bits = curve === 'P-384' ? 384 : 256;
+    const cPub = new Uint8Array(await SUB.exportKey('raw', client.publicKey));
+    const sPub = new Uint8Array(await SUB.exportKey('raw', server.publicKey));
+    const ss1 = new Uint8Array(await SUB.deriveBits({ name: 'ECDH', public: server.publicKey }, client.privateKey, bits));
+    const ss2 = new Uint8Array(await SUB.deriveBits({ name: 'ECDH', public: client.publicKey }, server.privateKey, bits));
+    const same = hex(ss1) === hex(ss2);
+
+    $('k-ecdh').innerHTML =
+      '<div><span class="k">client key_share</span><span class="v a">' + cut(hex(cPub), 76) + '</span></div>' +
+      '<div><span class="k">server key_share</span><span class="v a">' + cut(hex(sPub), 76) + '</span></div>' +
+      '<div><span class="k">client derives</span><span class="v g">' + cut(hex(ss1), 76) + '</span></div>' +
+      '<div><span class="k">server derives</span><span class="v g">' + cut(hex(ss2), 76) + '</span></div>' +
+      '<div><span class="k">agree?</span><span class="v ' + (same ? 'g' : 'r') + '">' +
+        (same ? 'identical — and this number never crossed the wire' : 'mismatch') + '</span></div>';
+
+    const zero = new Uint8Array(hlen(hash));
+    const transcript = enc.encode('ClientHello…ServerHello');   // stands in for the real message bytes
+    const early = await hkdfExtract(hash, zero, zero);
+    const derived1 = await deriveSecret(hash, early, 'derived', new Uint8Array(0));
+    const hs = await hkdfExtract(hash, derived1, ss1);
+    const cHs = await deriveSecret(hash, hs, 'c hs traffic', transcript);
+    const sHs = await deriveSecret(hash, hs, 's hs traffic', transcript);
+    const derived2 = await deriveSecret(hash, hs, 'derived', new Uint8Array(0));
+    const master = await hkdfExtract(hash, derived2, zero);
+    const cApp = await deriveSecret(hash, master, 'c ap traffic', transcript);
+    const sApp = await deriveSecret(hash, master, 's ap traffic', transcript);
+    const key = await expandLabel(hash, cApp, 'key', new Uint8Array(0), 16);
+    const iv  = await expandLabel(hash, cApp, 'iv',  new Uint8Array(0), 12);
+
+    rows.push(['early secret', 'HKDF-Extract(0, 0)', early, 'no pre-shared key, so both inputs are zeros']);
+    rows.push(['derived', 'Derive-Secret(early, "derived")', derived1, 'salt for the next extract']);
+    rows.push(['handshake secret', 'HKDF-Extract(derived, ECDHE)', hs, 'the shared secret finally enters here']);
+    rows.push(['client hs traffic', 'Derive-Secret(hs, "c hs traffic", transcript)', cHs, 'protects the client half of the handshake']);
+    rows.push(['server hs traffic', 'Derive-Secret(hs, "s hs traffic", transcript)', sHs, 'protects the certificate and the rest']);
+    rows.push(['master secret', 'HKDF-Extract(derived, 0)', master, '']);
+    rows.push(['client app traffic', 'Derive-Secret(master, "c ap traffic", transcript)', cApp, 'the key your GET is encrypted with']);
+    rows.push(['server app traffic', 'Derive-Secret(master, "s ap traffic", transcript)', sApp, '']);
+    rows.push(['record key', 'HKDF-Expand-Label(c ap, "key", 16)', key, 'AES-128 key']);
+    rows.push(['record iv', 'HKDF-Expand-Label(c ap, "iv", 12)', iv, 'nonce base, xored with the sequence number']);
+
+    $('k-sched').innerHTML = '<tr><th>secret</th><th>derivation</th><th>value</th></tr>' +
+      rows.map(r => '<tr><td><b>' + r[0] + '</b>' + (r[3] ? '<br><span style="color:var(--faint)">' + r[3] + '</span>' : '') +
+        '</td><td style="color:var(--faint)">' + esc(r[1]) + '</td><td>' + cut(hex(r[2]), 48) + '</td></tr>').join('');
+
+    const aesKey = await SUB.importKey('raw', key, 'AES-GCM', false, ['encrypt','decrypt']);
+    const plain = enc.encode($('k-msg').value || 'GET / HTTP/1.1');
+    const ct = new Uint8Array(await SUB.encrypt({ name: 'AES-GCM', iv }, aesKey, plain));
+    REC = { aesKey, iv, ct, plain };
+    await showRecord();
+  } catch (e) {
+    $('k-ecdh').innerHTML = '<div class="r">' + esc(e.message) + '</div>';
+  }
+}
+async function showRecord() {
+  if (!REC) return;
+  const wire = new Uint8Array(REC.ct);
+  if (TAMPER) wire[Math.floor(wire.length/2)] ^= 0x01;
+  let result;
+  try {
+    const out = new Uint8Array(await SUB.decrypt({ name: 'AES-GCM', iv: REC.iv }, REC.aesKey, wire));
+    result = '<span class="g">' + esc(new TextDecoder().decode(out)) + '</span> ✓ tag verified';
+  } catch (e) {
+    result = '<span class="r">refused — the GCM tag does not match, so the record is dropped without ever being read</span>';
+  }
+  $('k-rec').innerHTML =
+    '<div><span class="k">plaintext</span><span class="v">' + esc(new TextDecoder().decode(REC.plain)) + '</span></div>' +
+    '<div><span class="k">nonce</span><span class="v">' + hex(REC.iv) + '</span></div>' +
+    '<div><span class="k">on the wire</span><span class="v a">' + cut(hex(wire), 96) +
+      (TAMPER ? ' <span class="r">← one bit flipped</span>' : '') + '</span></div>' +
+    '<div><span class="k">ciphertext + tag</span><span class="v note">' + REC.ct.length + ' bytes for a ' +
+      REC.plain.length + ' byte message — the last 16 bytes are the authentication tag</span></div>' +
+    '<div><span class="k">decrypt</span><span class="v">' + result + '</span></div>';
+}
+$('k-run').addEventListener('click', runSchedule);
+$('k-tamper').addEventListener('click', () => {
+  TAMPER = !TAMPER;
+  $('k-tamper').classList.toggle('on', TAMPER);
+  showRecord();
+});
+
+/* ============================================================
+   04 — the handshake, tunable
+   ============================================================ */
+const COL = { plain:'#ffb000', hs:'#c07de8', app:'#00ff41', fail:'#ff5c5c' };
+function flowSteps() {
+  const ver = $('f-ver').value, sess = $('f-sess').value, cc = $('f-cc').value === 'yes';
+  let kx = $('f-kx').value;
+  const ech = $('f-ech').value === 'yes';
+  const breaks = { exp: $('f-exp').classList.contains('on'), name: $('f-name').classList.contains('on'),
+    self: $('f-self').classList.contains('on'), down: $('f-down').classList.contains('on') };
+  if (ver === '13') kx = 'ecdhe';
+  const zero = ver === '13' && sess === 'zero';
+  const resume = sess !== 'full';
+  const steps = [], notes = [], tap = [];
+
+  if (ver === '13') {
+    steps.push({ d: 1, e: 'plain', t: 'ClientHello',
+      s: 'supported versions, cipher suites, key_share (an ephemeral public key), ' + (ech ? 'encrypted SNI' : 'SNI: the hostname') +
+         (resume ? ', pre_shared_key' : '') });
+    if (zero) steps.push({ d: 1, e: 'app', t: 'early data (0-RTT)', s: 'a request sent before the server has said anything' });
+    steps.push({ d: -1, e: 'plain', t: 'ServerHello', s: 'chosen suite and the server key_share — from here both sides can derive keys' });
+    steps.push({ d: -1, e: 'hs', t: '{EncryptedExtensions}', s: 'ALPN and the rest, already encrypted' });
+    if (!resume) {
+      if (cc) steps.push({ d: -1, e: 'hs', t: '{CertificateRequest}', s: 'the server wants a client certificate too' });
+      steps.push({ d: -1, e: 'hs', t: '{Certificate}', s: 'the chain — encrypted in 1.3, so a wiretap cannot see who you are talking to' });
+      steps.push({ d: -1, e: 'hs', t: '{CertificateVerify}', s: 'a signature over the transcript, proving the server holds the private key' });
+    }
+    steps.push({ d: -1, e: 'hs', t: '{Finished}', s: 'a MAC over everything so far — tampering anywhere shows up here' });
+    if (cc && !resume) steps.push({ d: 1, e: 'hs', t: '{Certificate, CertificateVerify}', s: 'the client proves itself the same way' });
+    steps.push({ d: 1, e: 'hs', t: '{Finished}', s: 'client confirms the same transcript' });
+    steps.push({ d: 1, e: 'app', t: 'GET / HTTP/1.1', s: 'application data under the traffic keys' });
+    steps.push({ d: -1, e: 'app', t: '200 OK', s: '' });
+    notes.push({ k: 'ok', t: '<b>' + (zero ? '0-RTT' : '1-RTT') + '</b> — ' + (zero
+      ? 'the request rides along with the first flight, at the cost of replay protection'
+      : 'the client can send its request after a single round trip') });
+    notes.push({ k: '', t: 'The key_share is in the very first message, which is why 1.3 is a round trip shorter than 1.2.' });
+    notes.push({ k: 'ok', t: '<b>Forward secrecy is not optional</b> — 1.3 removed static RSA key exchange entirely.' });
+    if (zero) notes.push({ k: 'warn', t: '0-RTT data can be <b>replayed</b> by an attacker, so it is only safe for idempotent requests.' });
+  } else {
+    steps.push({ d: 1, e: 'plain', t: 'ClientHello', s: 'cipher suites, random, ' + (ech ? 'encrypted SNI' : 'SNI: the hostname') });
+    steps.push({ d: -1, e: 'plain', t: 'ServerHello', s: 'chosen cipher suite and the server random' });
+    if (!resume) {
+      steps.push({ d: -1, e: 'plain', t: 'Certificate', s: 'the chain travels in the clear — anyone watching learns the site' });
+      if (kx === 'ecdhe') steps.push({ d: -1, e: 'plain', t: 'ServerKeyExchange', s: 'ephemeral key share, signed with the certificate key' });
+      steps.push({ d: -1, e: 'plain', t: 'ServerHelloDone', s: '' });
+      steps.push({ d: 1, e: 'plain', t: 'ClientKeyExchange', s: kx === 'rsa'
+        ? 'the pre-master secret, encrypted to the server public key' : 'the client half of the ephemeral exchange' });
+    }
+    steps.push({ d: 1, e: 'plain', t: 'ChangeCipherSpec', s: 'everything after this is encrypted' });
+    steps.push({ d: 1, e: 'hs', t: '{Finished}', s: '' });
+    steps.push({ d: -1, e: 'plain', t: 'ChangeCipherSpec', s: '' });
+    steps.push({ d: -1, e: 'hs', t: '{Finished}', s: '' });
+    steps.push({ d: 1, e: 'app', t: 'GET / HTTP/1.1', s: '' });
+    notes.push({ k: 'warn', t: '<b>' + (resume ? '1' : '2') + ' round trips</b> before any data moves.' });
+    if (kx === 'rsa') notes.push({ k: 'bad', t: '<b>No forward secrecy.</b> The client encrypts the pre-master secret to the ' +
+      'server’s long-term key, so anyone who records this session today and obtains that key later can decrypt all of it.' });
+    notes.push({ k: 'warn', t: 'The certificate is sent in cleartext, so the site you are visiting is visible even though the content is not.' });
+  }
+
+  // failures
+  let failAt = -1, failMsg = null;
+  if (breaks.down) {
+    failAt = 1;
+    failMsg = 'A downgrade attempt is caught by the Finished MAC: it covers the whole transcript, so an attacker ' +
+      'who edited the version or cipher list cannot produce a matching value.';
+  } else if (breaks.self || breaks.exp || breaks.name) {
+    const idx = steps.findIndex(s => /Certificate/.test(s.t));
+    failAt = idx >= 0 ? idx : steps.length - 1;
+    failMsg = breaks.self ? 'The chain ends at a certificate nobody vouched for. Nothing in the maths is wrong — ' +
+        'the signature verifies fine — it just terminates outside your trust store. <b>NET::ERR_CERT_AUTHORITY_INVALID</b>'
+      : breaks.exp ? 'The certificate is past notAfter. Expiry bounds how long a stolen key stays useful and forces ' +
+        'revocation to be rechecked. <b>NET::ERR_CERT_DATE_INVALID</b>'
+      : 'The certificate is valid, signed by a real CA, and for the wrong name. Identity is the point, so this fails. ' +
+        '<b>NET::ERR_CERT_COMMON_NAME_INVALID</b>';
+  }
+
+  tap.push({ k: '', t: 'the IP addresses and ports — always' });
+  tap.push({ k: '', t: 'the size and timing of every record, which leaks more than people expect' });
+  if (ech) tap.push({ k: 'ok', t: 'the hostname is <b>hidden</b> by Encrypted Client Hello' });
+  else tap.push({ k: 'warn', t: 'the hostname in <b>SNI</b>, in cleartext, in the first packet' });
+  if (ver === '13') tap.push({ k: 'ok', t: 'the certificate is <b>encrypted</b> — the identity is not exposed' });
+  else tap.push({ k: 'warn', t: 'the whole <b>certificate</b>, so the identity is exposed' });
+  tap.push({ k: '', t: 'the cipher suites offered, which fingerprints your client (JA3 and friends)' });
+  tap.push({ k: 'ok', t: 'not the URL, not the headers, not the body' });
+  if (ver === '12' && kx === 'rsa') tap.push({ k: 'bad', t: 'and if the server key later leaks: <b>everything</b>, retroactively' });
+
+  return { steps, notes, tap, failAt, failMsg, ver, kx, zero, resume };
+}
+
+function drawFlow() {
+  const F = flowSteps();
+  const W = 940, C = 190, S = 750, TOP = 60, ROW = 42;
+  const H = TOP + F.steps.length * ROW + 20;
+  let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" font-family="' + "'JetBrains Mono',monospace" + '">';
+  s += '<rect width="' + W + '" height="' + H + '" fill="#050805"/>';
+  s += '<text x="' + C + '" y="24" font-size="12" fill="#b4ffcd" text-anchor="middle">browser</text>';
+  s += '<text x="' + S + '" y="24" font-size="12" fill="#b4ffcd" text-anchor="middle">server</text>';
+  [C, S].forEach(x => s += '<line x1="' + x + '" y1="34" x2="' + x + '" y2="' + (H-12) + '" stroke="#103d22"/>');
+
+  F.steps.forEach((st, i) => {
+    const y = TOP + i * ROW;
+    const failed = F.failAt === i;
+    const col = failed ? COL.fail : COL[st.e];
+    const from = st.d > 0 ? C : S, to = st.d > 0 ? S : C;
+    const dir = to > from ? 1 : -1, ax = to - dir * 8;
+    s += '<line x1="' + from + '" y1="' + y + '" x2="' + ax + '" y2="' + y + '" stroke="' + col + '" stroke-width="1.9"' +
+      (failed ? ' stroke-dasharray="5 3"' : '') + '/>';
+    s += '<path d="M' + to + ' ' + y + ' L' + ax + ' ' + (y-4) + ' L' + ax + ' ' + (y+4) + ' Z" fill="' + col + '"/>';
+    s += '<text x="' + ((from+to)/2) + '" y="' + (y-7) + '" font-size="11.5" fill="' + col + '" text-anchor="middle">' +
+      esc(st.t) + '</text>';
+    if (st.s) s += '<text x="' + ((from+to)/2) + '" y="' + (y+13) + '" font-size="9.5" fill="#0f5c33" text-anchor="middle">' +
+      esc(cut(st.s, 92)) + '</text>';
+    if (failed) s += '<text x="' + (W-8) + '" y="' + (y+4) + '" font-size="11" fill="' + COL.fail + '" text-anchor="end">✗ stops here</text>';
+    if (st.e !== 'plain') s += '<text x="8" y="' + (y+4) + '" font-size="9.5" fill="' + col + '">' +
+      (st.e === 'hs' ? 'handshake keys' : 'traffic keys') + '</text>';
+  });
+  s += '</svg>';
+  $('f-svg').innerHTML = s;
+  $('f-title').textContent = 'ladder · TLS ' + (F.ver === '13' ? '1.3' : '1.2') + ' · ' +
+    (F.kx === 'rsa' ? 'RSA key exchange' : 'ECDHE') + (F.resume ? ' · resumed' : '') + (F.zero ? ' + 0-RTT' : '');
+
+  const notes = F.notes.slice();
+  if (F.failMsg) notes.unshift({ k: 'bad', t: F.failMsg });
+  $('f-notes').innerHTML = notes.map(n => '<li class="' + n.k + '">' + n.t + '</li>').join('');
+  $('f-tap').innerHTML = F.tap.map(n => '<li class="' + n.k + '">' + n.t + '</li>').join('');
+  $('f-kx').disabled = $('f-ver').value === '13';
+}
+['f-ver','f-kx','f-sess','f-cc','f-ech'].forEach(id => $(id).addEventListener('change', () => {
+  if (id === 'f-ver' && $('f-ver').value === '13') $('f-kx').value = 'ecdhe';
+  if (id === 'f-ver' && $('f-ver').value === '12' && $('f-sess').value === 'zero') $('f-sess').value = 'resume';
+  drawFlow();
+}));
+['f-exp','f-name','f-self','f-down'].forEach(id => $(id).addEventListener('click', () => {
+  const on = !$(id).classList.contains('on');
+  ['f-exp','f-name','f-self','f-down'].forEach(x => $(x).classList.remove('on'));
+  $(id).classList.toggle('on', on);
+  drawFlow();
+}));
+
+/* ============================================================
+   05 — certificates
+   ============================================================ */
+let CHAIN = null, CTAMPER = false;
+async function issue() {
+  if (!SUB) { $('c-out').innerHTML = '<div class="r">WebCrypto needs a secure context (https or localhost).</div>'; return; }
+  const host = $('c-host').value || 'termit.dev';
+  const alg = { name: 'ECDSA', namedCurve: 'P-256' };
+  const root = await SUB.generateKey(alg, true, ['sign','verify']);
+  const inter = await SUB.generateKey(alg, true, ['sign','verify']);
+  const leaf = await SUB.generateKey(alg, true, ['sign','verify']);
+  const pub = async k => hex(new Uint8Array(await SUB.exportKey('raw', k)));
+  const tbs = (subject, key) => enc.encode(JSON.stringify({ subject, key: key.slice(0, 32), notAfter: '2027-01-01' }));
+  const interTbs = tbs('Termit Intermediate CA', await pub(inter.publicKey));
+  const leafTbs  = tbs(host, await pub(leaf.publicKey));
+  const sigI = new Uint8Array(await SUB.sign({ name:'ECDSA', hash:'SHA-256' }, root.privateKey, interTbs));
+  const sigL = new Uint8Array(await SUB.sign({ name:'ECDSA', hash:'SHA-256' }, inter.privateKey, leafTbs));
+  CHAIN = { root, inter, leaf, interTbs, leafTbs, sigI, sigL, host };
+  await verifyChain();
+}
+async function verifyChain() {
+  if (!CHAIN) return;
+  const C = CHAIN;
+  let leafData = new Uint8Array(C.leafTbs);
+  if (CTAMPER) leafData[10] ^= 0x20;
+  const okI = await SUB.verify({ name:'ECDSA', hash:'SHA-256' }, C.root.publicKey, C.sigI, C.interTbs);
+  const okL = await SUB.verify({ name:'ECDSA', hash:'SHA-256' }, C.inter.publicKey, C.sigL, leafData);
+  const line = (a, b, ok, note) => '<div><span class="k">' + a + '</span><span class="v">signed <b>' + b + '</b> → ' +
+    (ok ? '<span class="g">signature valid ✓</span>' : '<span class="r">signature invalid ✗</span>') +
+    (note ? ' <span class="note">' + note + '</span>' : '') + '</span></div>';
+  $('c-out').innerHTML =
+    '<div><span class="k">root CA</span><span class="v a">already in your trust store — this is the only thing you take on faith</span></div>' +
+    line('root', 'intermediate', okI) +
+    line('intermediate', 'leaf (' + esc(C.host) + ')', okL, CTAMPER ? 'one byte of the leaf was altered' : '') +
+    '<div><span class="k">chain</span><span class="v ' + (okI && okL ? 'g' : 'r') + '">' +
+      (okI && okL ? 'root → intermediate → ' + esc(C.host) + ' — trusted' : 'broken — the browser refuses the connection') + '</span></div>' +
+    '<div class="note" style="margin-top:6px">The leaf certificate is only a public key plus a name, wrapped in a ' +
+      'signature. During the handshake the server proves it holds the matching private key by signing the transcript — ' +
+      'which is why simply copying somebody’s certificate gets you nowhere.</div>';
+  $('c-checks').innerHTML = [
+    { k: okI && okL ? 'ok' : 'bad', t: '<b>signature chain</b> — each certificate signed by the next one up, ending at a trusted root' },
+    { k: 'ok', t: '<b>hostname</b> — the name you typed appears in the certificate’s subjectAltName' },
+    { k: 'ok', t: '<b>validity window</b> — now is between notBefore and notAfter' },
+    { k: 'ok', t: '<b>revocation</b> — not on a CRL, or stapled OCSP says it is still good' },
+    { k: 'ok', t: '<b>proof of possession</b> — CertificateVerify signs the transcript with the leaf private key' },
+    { k: '', t: '<b>certificate transparency</b> — the certificate appears in public logs, so mis-issuance is detectable' }
+  ].map(x => '<li class="' + x.k + '">' + x.t + '</li>').join('');
+}
+$('c-run').addEventListener('click', () => { CTAMPER = false; $('c-tamper').classList.remove('on'); issue(); });
+$('c-tamper').addEventListener('click', () => {
+  CTAMPER = !CTAMPER;
+  $('c-tamper').classList.toggle('on', CTAMPER);
+  verifyChain();
+});
+
+/* boot */
+rsa(); dh(); drawFlow();
+if (SUB) { runSchedule(); issue(); }
+</script>
+</body>
+</html>

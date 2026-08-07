@@ -321,6 +321,12 @@
           header as an RFC bit diagram wired to the hex, checksums verified as you edit.</p>
         <span class="badge online">online</span>
       </a>
+      <a class="card" href="/handshake/" rel="noopener">
+        <h3>handshake</h3>
+        <p>A playground for TLS. Turn the crank on RSA and Diffie–Hellman with numbers small enough to read,
+          then run the real key schedule and tune a connection until it breaks.</p>
+        <span class="badge online">online</span>
+      </a>
       <a class="card wide" href="/trace/" rel="noopener">
         <h3>trace</h3>
         <p>The same capture, one level up. Packets get grouped into conversations and drawn as ladder diagrams,
@@ -339,6 +345,7 @@
     <p class="row">wire&nbsp;&nbsp;&nbsp;&nbsp;→ <a href="/wire/">termit.dev/wire</a></p>
     <p class="row">probe&nbsp;&nbsp;→ <a href="/probe/">termit.dev/probe</a></p>
     <p class="row">trace&nbsp;&nbsp;→ <a href="/trace/">termit.dev/trace</a></p>
+    <p class="row">tls&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ <a href="/handshake/">termit.dev/handshake</a></p>
   </section>
 
   <footer>
@@ -538,6 +545,7 @@ const COMMANDS = {
     addLine('  <span class="bright">wire</span>        watch rx/tx as ascii');
     addLine('  <span class="bright">probe</span>       take a packet apart, byte by byte');
     addLine('  <span class="bright">trace</span>       see what a capture was actually doing');
+    addLine('  <span class="bright">tls</span>         learn how https works, from the maths up');
     addLine('  <span class="bright">github</span>      the code lives here');
     addLine('  <span class="bright">uname</span> -a    system info');
     addLine('  <span class="bright">matrix</span>      toggle the rain');
@@ -545,10 +553,15 @@ const COMMANDS = {
     addLine('  <span class="dim">…and a few that aren\u2019t listed. rabbit holes exist.</span>');
   },
   ls() {
-    addLine('<span class="bright">diagram/</span>  <span class="bright">colony/</span>  <span class="bright">wire/</span>  <span class="bright">probe/</span>  <span class="bright">trace/</span>');
+    addLine('<span class="bright">diagram/</span>  <span class="bright">colony/</span>  <span class="bright">wire/</span>  <span class="bright">probe/</span>  <span class="bright">trace/</span>  <span class="bright">handshake/</span>');
   },
   chart() {
     addLine('→ <a href="https://chart.termit.dev" rel="noopener">https://chart.termit.dev</a> <span class="dim">// sankey diagram studio</span>');
+  },
+  async tls() {
+    await typeLine('<span class="dim">negotiating…</span>', 22);
+    addLine('→ <a href="/handshake/">termit.dev/handshake</a> <span class="dim">// trust, but verify the chain</span>');
+    setTimeout(() => { location.href = '/handshake/'; }, 1200);
   },
   async trace() {
     await typeLine('<span class="dim">replaying the conversation…</span>', 22);
@@ -625,7 +638,8 @@ const ALIASES = { 'll': 'ls', 'ls projects': 'ls', 'open chart': 'chart', 'diagr
                   'colony': 'play', 'game': 'play', './colony': 'play',
                   'traffic': 'wire', 'ss': 'wire', 'netstat': 'wire',
                   'tcpdump': 'probe', 'pcap': 'probe', 'wireshark': 'probe', 'packet': 'probe',
-                  'flows': 'trace', 'handshake': 'trace', 'syn': 'trace' };
+                  'flows': 'trace', 'syn': 'trace',
+                  'handshake': 'tls', 'ssl': 'tls', 'https': 'tls', 'rsa': 'tls', 'openssl': 'tls' };
 
 function esc(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

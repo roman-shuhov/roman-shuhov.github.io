@@ -1,0 +1,1410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PNW — light rail &amp; ferries · termit.dev</title>
+<meta name="description" content="Link light rail and Washington State Ferries on one map, with a live departures board and delays.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23050805'/%3E%3Crect x='6' y='4' width='20' height='13' rx='3' fill='%23ffb000'/%3E%3Cpath d='M4 24h24l-3 5H7z' fill='%235b8ce6'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#050805; --panel:#0a120c; --panel-2:#071009; --line:#103d22;
+    --green:#00ff41; --dim:#1e9e5c; --faint:#0f5c33; --bright:#b4ffcd;
+    --amber:#ffb000; --red:#ff5c5c; --blue:#5b8ce6; --violet:#c07de8; --grey:#7d8a83;
+    --mono:'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body { background:var(--bg); color:var(--green); font-family:var(--mono); font-size:13px; line-height:1.5;
+    display:flex; flex-direction:column; overflow:hidden; }
+  ::selection { background:var(--green); color:#031007; }
+  .scanlines { position:fixed; inset:0; z-index:60; pointer-events:none;
+    background:repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0, rgba(0,0,0,0) 2px, rgba(0,0,0,.14) 3px);
+    mix-blend-mode:multiply; }
+
+  header { border-bottom:1px solid var(--line); background:var(--panel-2); padding:8px 14px;
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex:none; }
+  .logo { font-weight:800; font-size:16px; color:var(--bright); letter-spacing:.14em; }
+  .logo small { color:var(--dim); font-weight:400; font-size:11px; letter-spacing:0; margin-left:8px; }
+  header .sp { flex:1; }
+  .pill { font-size:11px; color:var(--dim); border:1px solid var(--line); border-radius:999px; padding:2px 9px; white-space:nowrap; }
+  .pill.live { color:var(--green); border-color:var(--green); }
+  .pill.demo { color:var(--amber); border-color:#4a3a12; }
+  .pill.bad { color:var(--red); border-color:#533; }
+  .btn { background:transparent; border:1px solid var(--line); color:var(--green); font-family:var(--mono);
+    font-size:11.5px; padding:5px 10px; border-radius:6px; cursor:pointer; white-space:nowrap; }
+  .btn:hover:not(:disabled){ border-color:var(--green); background:rgba(0,255,65,.08); }
+  .btn.on { background:rgba(0,255,65,.14); border-color:var(--green); }
+  .btn.sm { padding:3px 8px; font-size:11px; }
+  input[type=text], select { background:#061008; border:1px solid var(--line); color:var(--bright);
+    font-family:var(--mono); font-size:11.5px; padding:5px 7px; border-radius:5px; }
+  input:focus, select:focus { outline:none; border-color:var(--green); }
+  .lbl { color:var(--faint); font-size:11px; }
+
+  .top { flex:1.05; display:grid; grid-template-columns:minmax(0,1fr) 320px; min-height:0; }
+  @media (max-width:1000px){ .top { grid-template-columns:1fr; } .side { display:none; } }
+  .mapwrap { position:relative; min-height:0; }
+  #map { display:block; width:100%; height:100%; cursor:grab; }
+  #map:active { cursor:grabbing; }
+  .mapctl { position:absolute; left:9px; top:9px; display:flex; flex-direction:column; gap:4px; z-index:5; }
+  .attrib { position:absolute; right:7px; bottom:5px; font-size:9px; color:var(--faint); z-index:5;
+    background:rgba(5,8,5,.7); padding:2px 5px; border-radius:4px; }
+  .side { border-left:1px solid var(--line); background:var(--panel); overflow-y:auto; }
+  .side h2 { font-size:10px; font-weight:500; letter-spacing:.2em; text-transform:uppercase; color:var(--dim);
+    padding:7px 11px; background:var(--panel-2); border-bottom:1px solid var(--line); }
+  .side .body { padding:9px 11px; border-bottom:1px solid var(--line); }
+  .frm { display:grid; grid-template-columns:auto 1fr; gap:5px 7px; align-items:center; }
+  .frm label { color:var(--faint); font-size:10.5px; white-space:nowrap; }
+  .frm input, .frm select { width:100%; }
+  .row { display:flex; gap:5px; flex-wrap:wrap; align-items:center; margin-top:7px; }
+  .kv div { padding:2px 0; border-bottom:1px dashed #0d2517; font-size:11.5px; }
+  .kv div:last-child { border-bottom:none; }
+  .kv .k { color:var(--faint); display:inline-block; min-width:92px; }
+  .kv .v { color:var(--bright); }
+  .note { color:var(--faint); font-size:10.5px; line-height:1.5; margin-top:6px; }
+  .note code { color:var(--dim); }
+
+  .board { flex:1; border-top:1px solid var(--line); background:var(--panel); display:flex; flex-direction:column; min-height:0; }
+  .tabs { display:flex; gap:4px; padding:0 12px; background:var(--panel-2); border-bottom:1px solid var(--line); align-items:center; }
+  .tabs button { background:none; border:none; border-bottom:2px solid transparent; color:var(--dim);
+    font-family:var(--mono); font-size:11.5px; padding:9px 12px; cursor:pointer; }
+  .tabs button.on { color:var(--green); border-bottom-color:var(--green); }
+  .tabs .sp { flex:1; }
+  .boardbody { flex:1; overflow-y:auto; padding:10px 12px 16px; }
+  .boardbody::-webkit-scrollbar, .side::-webkit-scrollbar { width:7px; }
+  .boardbody::-webkit-scrollbar-thumb, .side::-webkit-scrollbar-thumb { background:var(--faint); border-radius:4px; }
+
+  .cols2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:12px; }
+  .tt { border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--panel-2); }
+  .tt h3 { font-size:11.5px; color:var(--bright); font-weight:700; padding:7px 10px; background:rgba(0,255,65,.05);
+    border-bottom:1px solid var(--line); display:flex; gap:8px; align-items:baseline; }
+  .tt h3 .sub { color:var(--faint); font-weight:400; font-size:10.5px; }
+  .tt h3 .sp { flex:1; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  th { color:var(--faint); font-weight:400; text-align:left; padding:4px 10px; font-size:10px;
+    letter-spacing:.1em; text-transform:uppercase; border-bottom:1px solid var(--line); }
+  td { padding:5px 10px; border-bottom:1px solid #0d1f14; white-space:nowrap; }
+  tr:last-child td { border-bottom:none; }
+  tr.next td { background:rgba(0,255,65,.07); }
+  .t-time { color:var(--bright); font-weight:700; font-size:13px; }
+  .t-in { color:var(--green); font-weight:700; }
+  .t-dest { color:var(--dim); overflow:hidden; text-overflow:ellipsis; max-width:170px; }
+  .t-note { color:var(--faint); font-size:10.5px; }
+  .early { color:var(--blue); } .late { color:var(--amber); } .ontime { color:var(--green); }
+  .vlate { color:var(--red); } .sched { color:var(--grey); }
+  .empty { color:var(--faint); font-size:11.5px; padding:10px; }
+  .rt { padding:5px 11px; border-bottom:1px solid #0d1f14; cursor:pointer; display:flex; gap:7px; align-items:baseline; }
+  .rt:hover { background:rgba(0,255,65,.06); }
+  .rt.on { background:rgba(0,255,65,.13); }
+  .rt .nm { font-weight:700; white-space:nowrap; }
+  .rt .sub { color:var(--faint); font-size:10.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .rt .n { color:var(--dim); font-size:10.5px; margin-left:auto; }
+  .chip { font-size:10px; padding:1px 6px; border:1px solid currentColor; border-radius:999px; }
+</style>
+</head>
+<body>
+<div class="scanlines"></div>
+
+<header>
+  <div class="logo">PNW<small>light rail &amp; ferries · termit.dev</small></div>
+  <div class="sp"></div>
+  <span class="pill demo" id="p-mode">demo data</span>
+  <span class="pill" id="p-link">Link —</span>
+  <span class="pill" id="p-ferry">ferries —</span>
+  <span class="pill" id="p-age">—</span>
+  <button class="btn" id="b-refresh">refresh</button>
+</header>
+
+<div class="top">
+  <div class="mapwrap">
+    <canvas id="map"></canvas>
+    <div class="mapctl">
+      <button class="btn sm" id="z-in">+</button>
+      <button class="btn sm" id="z-out">−</button>
+      <button class="btn sm" id="z-home">⌂</button>
+      <button class="btn sm on" id="m-rail">rail</button>
+      <button class="btn sm on" id="m-ferry">ferry</button>
+    </div>
+    <div class="attrib" id="attrib"></div>
+  </div>
+
+  <aside class="side">
+    <h2>sources</h2>
+    <div class="body">
+      <div class="frm">
+        <label>mode</label>
+        <select id="src"><option value="demo">demo</option><option value="live">live APIs</option></select>
+        <label>OBA base</label><input type="text" id="obabase" value="https://pnw.t3rm1t.workers.dev/oba">
+        <label>WSF base</label><input type="text" id="wsfbase" value="https://pnw.t3rm1t.workers.dev/wsf">
+        <label>OBA key</label><input type="text" id="obakey" placeholder="blank when a proxy holds it">
+        <label>WSF key</label><input type="text" id="wsfkey" placeholder="blank when a proxy holds it">
+        <label>refresh</label>
+        <select id="every"><option value="15">15s</option><option value="30" selected>30s</option>
+          <option value="60">60s</option><option value="0">manual</option></select>
+      </div>
+      <p class="note" id="srcnote">Both agencies publish live positions. Link comes from OneBusAway,
+        ferries from WSDOT's vessel feed — <code>Eta</code> and <code>LeftDock</code> are actual times, not estimates.
+        WSDOT sends no CORS headers, so the ferry half needs a proxy; leave the key fields empty when one is set.</p>
+    </div>
+
+    <h2>paths</h2>
+    <div id="routelist"></div>
+
+    <h2>selected</h2>
+    <div class="body kv" id="detail"><span class="note">tap a train, a boat, or a stop</span></div>
+
+    <h2>vehicles</h2>
+    <div id="vlist"></div>
+  </aside>
+</div>
+
+<div class="board">
+  <div class="tabs">
+    <button class="on" data-t="commute">my commute</button>
+    <button data-t="rail">Link departures</button>
+    <button data-t="ferry">ferry sailings</button>
+    <span class="sp"></span>
+    <span class="lbl" id="clock"></span>
+  </div>
+  <div class="boardbody" id="boardbody"></div>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+const hhmm = t => { const d = new Date(t); return d.getHours().toString().padStart(2,'0') + ':' +
+  d.getMinutes().toString().padStart(2,'0'); };
+const inMin = t => {
+  const m = Math.round((t - Date.now()) / 60000);
+  return m < -1 ? 'gone' : m <= 0 ? 'now' : m === 1 ? '1 min' : m + ' min';
+};
+function delayCell(sched, actual) {
+  if (!sched || !actual) return '<span class="sched">scheduled</span>';
+  const d = Math.round((actual - sched) / 60000);
+  if (Math.abs(d) < 1) return '<span class="ontime">on time</span>';
+  if (d < 0) return '<span class="early">' + (-d) + ' min early</span>';
+  return '<span class="' + (d > 10 ? 'vlate' : 'late') + '">+' + d + ' min</span>';
+}
+
+/* ============================================================
+   map
+   ============================================================ */
+const TILE = 256;
+const project = (lat, lon) => { const s = Math.sin(lat*Math.PI/180);
+  return { x:(lon+180)/360, y:0.5 - Math.log((1+s)/(1-s))/(4*Math.PI) }; };
+function unproject(x, y) { const lon = x*360-180, n = Math.PI - 2*Math.PI*y;
+  return { lat: 180/Math.PI*Math.atan(0.5*(Math.exp(n)-Math.exp(-n))), lon }; }
+const view = { lat:47.62, lon:-122.42, z:9.6 };
+const HOME = { lat:47.62, lon:-122.42, z:9.6 };
+const cv = $('map'), gx = cv.getContext('2d');
+let W = 900, H = 500;
+function sizeMap() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = cv.clientWidth || 900; H = cv.clientHeight || 500;
+  cv.width = Math.floor(W*dpr); cv.height = Math.floor(H*dpr);
+  gx.setTransform(dpr,0,0,dpr,0,0);
+}
+const worldSize = () => TILE * Math.pow(2, view.z);
+function toScreen(lat, lon) { const p = project(lat,lon), c = project(view.lat,view.lon), s = worldSize();
+  return { x:(p.x-c.x)*s + W/2, y:(p.y-c.y)*s + H/2 }; }
+function toLatLon(sx, sy) { const c = project(view.lat,view.lon), s = worldSize();
+  return unproject(c.x + (sx-W/2)/s, c.y + (sy-H/2)/s); }
+function haversine(la1,lo1,la2,lo2){ const R=6371,d=x=>x*Math.PI/180;
+  const a=Math.sin(d(la2-la1)/2)**2 + Math.cos(d(la1))*Math.cos(d(la2))*Math.sin(d(lo2-lo1)/2)**2;
+  return 2*R*Math.asin(Math.sqrt(a)); }
+
+// one basemap: dark tiles pushed through a hue-rotate + saturate pass, so water reads blue,
+// land reads green, and the roads stay visible without competing with the transit lines
+const BASEMAP = {
+  url: 'https://basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png',
+  tint: 'contrast(1.5) saturate(2.6) hue-rotate(150deg) brightness(0.9)',
+  dark: true,
+  attrib: '© OpenStreetMap contributors © CARTO'
+};
+const style = () => BASEMAP;
+const tileCache = new Map();
+function drawTiles() {
+  const tz = clamp(Math.round(view.z), 1, 16), scale = worldSize()/(TILE*Math.pow(2,tz));
+  const c = project(view.lat, view.lon), n = Math.pow(2,tz);
+  const cx = c.x*n, cy = c.y*n, hw = W/2/(TILE*scale), hh = H/2/(TILE*scale);
+  for (let ty = Math.max(0,Math.floor(cy-hh)); ty <= Math.min(n-1,Math.ceil(cy+hh)); ty++)
+    for (let tx = Math.floor(cx-hw); tx <= Math.ceil(cx+hw); tx++) {
+      const wx = ((tx%n)+n)%n, k = tz+'/'+wx+'/'+ty;
+      let img = tileCache.get(k);
+      if (!img) { img = new Image(); img.crossOrigin='anonymous'; img.onload = draw;
+        img.onerror = () => img.failed = true;
+        img.src = style().url.replace('{z}/{x}/{y}', k);
+        tileCache.set(k, img);
+        if (tileCache.size > 300) tileCache.delete(tileCache.keys().next().value); }
+      if (!img.complete || img.failed) continue;
+      if (style().tint) gx.filter = style().tint;
+      gx.drawImage(img, (tx-cx)*TILE*scale + W/2, (ty-cy)*TILE*scale + H/2, TILE*scale+1, TILE*scale+1);
+      gx.filter = 'none';
+    }
+}
+function decodePolyline(str) {
+  const out=[]; let i=0, lat=0, lon=0;
+  while (i < str.length) {
+    let sh=0,r=0,b;
+    do { b=str.charCodeAt(i++)-63; r|=(b&0x1f)<<sh; sh+=5; } while (b>=0x20 && i<str.length);
+    lat += (r&1)?~(r>>1):(r>>1); sh=0; r=0;
+    do { b=str.charCodeAt(i++)-63; r|=(b&0x1f)<<sh; sh+=5; } while (b>=0x20 && i<str.length);
+    lon += (r&1)?~(r>>1):(r>>1);
+    out.push([lat/1e5, lon/1e5]);
+  }
+  return out;
+}
+
+/* ============================================================
+   ferry geography — every WSF run in the region
+   ============================================================ */
+const TERM = {
+  1:['Anacortes',48.5070,-122.6790], 3:['Bainbridge Island',47.6229,-122.5110],
+  4:['Bremerton',47.5640,-122.6270], 5:['Clinton',47.9750,-122.3520],
+  7:['Coupeville',48.1590,-122.6740], 8:['Edmonds',47.8110,-122.3830],
+  9:['Fauntleroy',47.5230,-122.3940], 10:['Friday Harbor',48.5350,-123.0140],
+  11:['Kingston',47.7960,-122.4960], 12:['Lopez Island',48.5710,-122.8830],
+  13:['Mukilteo',47.9490,-122.3040], 14:['Orcas Island',48.5970,-122.9470],
+  15:['Point Defiance',47.3060,-122.5140], 16:['Port Townsend',48.1120,-122.7600],
+  17:['Seattle',47.6019,-122.3369], 18:['Shaw Island',48.5840,-122.9290],
+  20:['Southworth',47.5130,-122.4950], 21:['Tahlequah',47.3330,-122.5070],
+  22:['Vashon Island',47.5100,-122.4640]
+};
+const RUNS = [
+  { a:17, b:3,  name:'Seattle – Bainbridge',      headway:50, mins:35 },
+  { a:17, b:4,  name:'Seattle – Bremerton',       headway:70, mins:60 },
+  { a:8,  b:11, name:'Edmonds – Kingston',        headway:45, mins:30 },
+  { a:13, b:5,  name:'Mukilteo – Clinton',        headway:30, mins:20 },
+  { a:9,  b:22, name:'Fauntleroy – Vashon',       headway:40, mins:22 },
+  { a:9,  b:20, name:'Fauntleroy – Southworth',   headway:70, mins:35 },
+  { a:15, b:21, name:'Pt Defiance – Tahlequah',   headway:60, mins:15 },
+  { a:16, b:7,  name:'Port Townsend – Coupeville',headway:90, mins:35 },
+  { a:1,  b:10, name:'Anacortes – Friday Harbor', headway:150, mins:65 },
+  { a:1,  b:14, name:'Anacortes – Orcas',         headway:170, mins:75 },
+  { a:1,  b:12, name:'Anacortes – Lopez',         headway:190, mins:45 }
+];
+const VESSELS = ['Wenatchee','Tacoma','Puyallup','Walla Walla','Kaleetan','Kitsap','Cathlamet','Chimacum',
+  'Suquamish','Tokitae','Salish','Chelan','Yakima','Samish','Issaquah','Sealth','Kittitas'];
+
+/* ============================================================
+   state
+   ============================================================ */
+const ST = {
+  trains: [], boats: [], railStops: new Map(), railRoutes: new Map(),
+  shapes: new Map(), asked: new Set(),
+  arrivals: new Map(),        // stopId -> [{routeName, headsign, sched, pred, tripId}]
+  sailings: [],               // {runName, from, to, sched, actual, eta, vessel, status}
+  sel: null, err: null, lastFetch: 0,
+  showRail: true, showFerry: true,
+  commute: { a: '', b: '' }
+};
+const RAILCOL = '#ffb000', FERRYCOL = '#5b8ce6';
+
+/* ============================================================
+   WSDOT ferries
+   ============================================================ */
+const wcfDate = s => {
+  if (typeof s === 'number') return s;
+  const m = /\/Date\((-?\d+)/.exec(s || '');
+  return m ? +m[1] : null;
+};
+async function wsfGet(path) {
+  const base = $('wsfbase').value.replace(/\/$/,'');
+  const key = $('wsfkey').value.trim();
+  const url = base + path + (key ? (path.includes('?') ? '&' : '?') + 'apiaccesscode=' + encodeURIComponent(key) : '');
+  const r = await fetch(url, { cache:'no-store' });
+  if (r.status === 429) { backOff('WSF rate limit'); throw new Error('WSF 429 — rate limited'); }
+  if (!r.ok) throw new Error('WSF ' + r.status);
+  return r.json();
+}
+function normaliseVessels(rows) {
+  const boats = [], sail = [];
+  for (const v of rows || []) {
+    if (v.Latitude == null || v.Longitude == null) continue;
+    const sched = wcfDate(v.ScheduledDeparture), left = wcfDate(v.LeftDock), eta = wcfDate(v.Eta);
+    const b = {
+      kind:'ferry', key:'wsf_' + (v.VesselID || v.VesselName), name: v.VesselName,
+      lat:+v.Latitude, lon:+v.Longitude, heading: typeof v.Heading === 'number' ? v.Heading : null,
+      speed: v.Speed || 0, from: v.DepartingTerminalName || '', to: v.ArrivingTerminalName || '',
+      sched, left, eta, atDock: !!v.AtDock, inService: v.InService !== false
+    };
+    boats.push(b);
+    if (b.from && sched) sail.push({ run: b.from + ' → ' + b.to, from:b.from, to:b.to,
+      sched, actual:left, eta, vessel:b.name, atDock:b.atDock });
+  }
+  return { boats, sail };
+}
+
+/* ============================================================
+   OneBusAway — Link only
+   ============================================================ */
+// when an upstream says "slow down", we do — and say so, instead of hammering on
+const BACKOFF = { until: 0, step: 0, why: '' };
+function backOff(why) {
+  BACKOFF.step = Math.min(BACKOFF.step + 1, 5);
+  BACKOFF.until = Date.now() + Math.min(300, 20 * Math.pow(2, BACKOFF.step - 1)) * 1000;
+  BACKOFF.why = why;
+}
+function backoffClear() { BACKOFF.step = 0; BACKOFF.until = 0; BACKOFF.why = ''; }
+const backoffLeft = () => Math.max(0, Math.ceil((BACKOFF.until - Date.now()) / 1000));
+
+async function obaGet(path, params) {
+  const base = $('obabase').value.replace(/\/$/,'');
+  const key = $('obakey').value.trim();
+  const q = new URLSearchParams(params || {});
+  if (key) q.set('key', key);                     // a proxy supplies its own; only send ours if set
+  const r = await fetch(base + path + (q.toString() ? '?' + q : ''), { cache:'no-store' });
+  if (r.status === 401) throw new Error('OBA 401 — key rejected');
+  if (r.status === 429) { backOff('OBA rate limit'); throw new Error('OBA 429 — rate limited'); }
+  if (!r.ok) throw new Error('OBA ' + r.status);
+  const j = await r.json();
+  if (j.code === 429) { backOff('OBA rate limit'); throw new Error('OBA 429 — rate limited'); }
+  if (j.code && j.code !== 200) throw new Error('OBA ' + j.code);
+  return j.data;
+}
+// the map viewport, clamped to something the API will accept
+function viewportSpan() {
+  const a = toLatLon(0,0), b = toLatLon(W,H);
+  return { lat:((a.lat+b.lat)/2).toFixed(5), lon:((a.lon+b.lon)/2).toFixed(5),
+    latSpan: Math.min(1.4, Math.max(0.05, Math.abs(a.lat-b.lat))).toFixed(4),
+    lonSpan: Math.min(1.8, Math.max(0.05, Math.abs(a.lon-b.lon))).toFixed(4) };
+}
+function indexRefs(refs) {
+  if (!refs) return;
+  (refs.routes || []).forEach(r => ST.railRoutes.set(r.id, r));
+  (refs.stops || []).forEach(s => ST.railStops.set(s.id, s));
+  (refs.trips || []).forEach(t => ST.trips.set(t.id, t));
+}
+ST.trips = new Map();
+
+async function discoverRail() {
+  if (ST.railRouteIds && ST.railRouteIds.length) return ST.railRouteIds;
+  if ($('src').value === 'demo') { ST.railRouteIds = DEMO_RAIL.map(r => r.id); return ST.railRouteIds; }
+  const d = await obaGet('/routes-for-agency/40.json');
+  const rail = (d.list || []).filter(r => r.type === 0 || r.type === 1 || r.type === 2 && /Line/.test(r.shortName || ''));
+  rail.forEach(r => ST.railRoutes.set(r.id, r));
+  ST.railRouteIds = rail.filter(r => r.type === 0 || r.type === 1).map(r => r.id);
+  return ST.railRouteIds;
+}
+function stopSeq(routeId) {
+  const sh = ST.shapes.get(routeId);
+  return sh ? sh.stops : [];
+}
+// nearest stop ahead of the train, and how long until it gets there
+function projectNext(v) {
+  const stops = stopSeq(v.routeId);
+  if (!stops.length) return {};
+  let ni = -1;
+  if (v.nextStopId) ni = stops.findIndex(s => s.id === v.nextStopId);
+  if (ni < 0) {
+    let bd = Infinity;
+    stops.forEach((s, i) => { const d = haversine(v.lat, v.lon, s.lat, s.lon); if (d < bd) { bd = d; ni = i; } });
+    if (ni >= 0 && v.dir === '0' && ni < stops.length - 1) ni = Math.min(stops.length - 1, ni + 1);
+    else if (ni > 0 && v.dir === '1') ni = Math.max(0, ni - 1);
+  }
+  const next = stops[ni];
+  const from = v.dir === '0' ? stops[0] : stops[stops.length-1];
+  const to   = v.dir === '0' ? stops[stops.length-1] : stops[0];
+  let eta = v.nextStopEta || null;
+  if (!eta && next) {
+    // no prediction from the feed: fall back to distance at the line's own average speed
+    const km = haversine(v.lat, v.lon, next.lat, next.lon);
+    eta = Date.now() + (km / 32) * 3600 * 1000 + (v.dev && v.dev > 0 ? 0 : 0);
+    eta = { t: eta, estimated: true };
+  } else if (eta) eta = { t: eta, estimated: false };
+  return { next, from, to, eta, index: ni, total: stops.length };
+}
+
+function normaliseTrains(list) {
+  const out = [];
+  for (const td of list || []) {
+    const st = td.status;
+    if (!st || !st.position) continue;
+    const trip = ST.trips.get(st.activeTripId || td.tripId) || {};
+    const route = ST.railRoutes.get(trip.routeId) || {};
+    out.push({
+      nextStopId: st.nextStop || '',
+      nextStopEta: st.nextStopTimeOffset ? Date.now() + st.nextStopTimeOffset * 1000 : 0,
+      kind:'rail', key: st.vehicleId || td.tripId, tripId: st.activeTripId || td.tripId,
+      lat: st.position.lat, lon: st.position.lon,
+      orientation: typeof st.orientation === 'number' ? st.orientation : null,
+      dev: typeof st.scheduleDeviation === 'number' ? st.scheduleDeviation : null,
+      predicted: !!st.predicted, routeId: trip.routeId || '',
+      name: route.shortName || route.longName || '?', long: route.longName || '',
+      headsign: trip.tripHeadsign || '', dir: trip.directionId || '0',
+      next: (ST.railStops.get(st.nextStop) || {}).name || '',
+      vehicleId: st.vehicleId || '', lastUpdate: st.lastUpdateTime || 0
+    });
+  }
+  return out;
+}
+async function loadArrivals(stopId) {
+  if (!stopId) return;
+  try {
+    const d = $('src').value === 'demo' ? demoArrivals(stopId)
+      : await obaGet('/arrivals-and-departures-for-stop/' + encodeURIComponent(stopId) + '.json',
+          { minutesAfter: 75, minutesBefore: 2 });
+    indexRefs(d.references);
+    const list = ((d.entry && d.entry.arrivalsAndDepartures) || []).map(a => ({
+      route: a.routeShortName || a.routeLongName || '',
+      headsign: a.tripHeadsign || '',
+      sched: a.scheduledArrivalTime || a.scheduledDepartureTime,
+      pred: a.predictedArrivalTime || a.predictedDepartureTime || 0,
+      tripId: a.tripId, status: a.status || ''
+    })).filter(a => a.sched)
+      .sort((x, y) => (x.pred || x.sched) - (y.pred || y.sched));
+    ST.arrivals.set(stopId, list);
+  } catch (e) { /* board falls back to schedule text */ }
+}
+async function loadShape(routeId) {
+  if (!routeId || ST.asked.has(routeId)) return;
+  ST.asked.add(routeId);
+  try {
+    const d = $('src').value === 'demo' ? demoStopsForRoute(routeId)
+      : await obaGet('/stops-for-route/' + encodeURIComponent(routeId) + '.json', { includePolylines:'true' });
+    indexRefs(d.references);
+    const e = d.entry || {};
+    const lines = [];
+    for (const g of e.stopGroupings || []) for (const grp of g.stopGroups || [])
+      for (const pl of grp.polylines || []) { const c = decodePolyline(pl.points); if (c.length > 1) lines.push(c); }
+    if (!lines.length) for (const pl of e.polylines || []) { const c = decodePolyline(pl.points); if (c.length > 1) lines.push(c); }
+    const stops = (e.stopIds || []).map(id => ST.railStops.get(id)).filter(Boolean);
+    ST.shapes.set(routeId, { lines, stops });
+    draw();
+  } catch (err) { ST.asked.delete(routeId); }
+}
+
+/* ============================================================
+   load
+   ============================================================ */
+async function load() {
+  const demo = $('src').value === 'demo';
+  if (!demo && backoffLeft() > 0) { ST.err = BACKOFF.why + ' — retrying in ' + backoffLeft() + 's'; paint(); return; }
+  let railErr = null, ferryErr = null;
+  try {
+    const ids = await discoverRail();
+    let all = [];
+    if (demo) {
+      for (const id of ids) {
+        const d = demoTripsForRoute(id);
+        indexRefs(d.references);
+        all.push(...(d.list || []));
+        if (!ST.shapes.has(id)) loadShape(id);
+      }
+    } else {
+      // one viewport call covers every line at once, instead of one call per route
+      const v = viewportSpan();
+      const d = await obaGet('/trips-for-location.json',
+        { lat:v.lat, lon:v.lon, latSpan:v.latSpan, lonSpan:v.lonSpan, includeTrip:'true', includeStatus:'true' });
+      indexRefs(d.references);
+      const want = new Set(ids);
+      all = (d.list || []).filter(td => {
+        const t = ST.trips.get((td.status && td.status.activeTripId) || td.tripId);
+        return t && want.has(t.routeId);
+      });
+      for (const id of ids) if (!ST.shapes.has(id)) loadShape(id);
+    }
+    ST.trains = normaliseTrains(all);
+    if (!demo) backoffClear();
+  } catch (e) { railErr = e.message; ST.trains = []; }
+
+  try {
+    const rows = demo ? demoVessels() : await wsfGet('/vessels/rest/vessellocations');
+    const n = normaliseVessels(rows);
+    ST.boats = n.boats;
+    ST.sailings = demo ? demoSailings() : n.sail;
+  } catch (e) { ferryErr = e.message; ST.boats = []; }
+
+  ST.err = [railErr && ('Link: ' + railErr), ferryErr && ('ferries: ' + ferryErr)].filter(Boolean).join(' · ') || null;
+  ST.lastFetch = Date.now();
+  for (const id of [ST.commute.a, ST.commute.b]) if (id) await loadArrivals(id);
+  if (ST.selStop) await loadArrivals(ST.selStop);
+  paint();
+}
+
+/* ============================================================
+   drawing
+   ============================================================ */
+function haloLine(pts, col, width) {
+  if (pts.length < 2) return;
+  gx.lineJoin = 'round'; gx.lineCap = 'round';
+  for (const pass of [0, 1]) {
+    gx.strokeStyle = pass ? col : (style().dark ? 'rgba(0,0,0,.55)' : 'rgba(20,26,22,.75)');
+    gx.lineWidth = pass ? width : width + 3.5;
+    gx.beginPath();
+    let started = false;
+    for (const [la, lo] of pts) {
+      const s = toScreen(la, lo);
+      if (s.x < -400 || s.x > W+400 || s.y < -400 || s.y > H+400) { started = false; continue; }
+      started ? gx.lineTo(s.x, s.y) : gx.moveTo(s.x, s.y);
+      started = true;
+    }
+    gx.stroke();
+  }
+}
+function haloText(t, x, y, col, weight) {
+  gx.font = (weight || '') + "10px 'JetBrains Mono', monospace";
+  gx.lineWidth = 3; gx.strokeStyle = style().dark ? 'rgba(4,7,4,.9)' : 'rgba(255,255,255,.85)';
+  gx.strokeText(t, x, y);
+  gx.fillStyle = col; gx.fillText(t, x, y);
+}
+
+// nose points along +x; caller has already rotated
+function drawTrain(col, sel) {
+  const L = sel ? 1.25 : 1;
+  gx.scale(L, L);
+  gx.lineJoin = 'round';
+  gx.strokeStyle = 'rgba(0,0,0,.75)'; gx.lineWidth = 3;
+  gx.fillStyle = col;
+  gx.beginPath();                                  // rounded nose, boxy tail
+  gx.moveTo(11, 0);
+  gx.quadraticCurveTo(10.5, -5, 6, -5.5);
+  gx.lineTo(-9, -5.5);
+  gx.quadraticCurveTo(-11, -5.5, -11, -3.5);
+  gx.lineTo(-11, 3.5);
+  gx.quadraticCurveTo(-11, 5.5, -9, 5.5);
+  gx.lineTo(6, 5.5);
+  gx.quadraticCurveTo(10.5, 5, 11, 0);
+  gx.closePath();
+  gx.stroke(); gx.fill();
+  gx.fillStyle = 'rgba(6,10,8,.85)';               // windscreen
+  gx.beginPath(); gx.moveTo(8.6, -3.4); gx.lineTo(4.6, -3.4); gx.lineTo(4.6, 3.4); gx.lineTo(8.6, 3.4);
+  gx.quadraticCurveTo(9.8, 0, 8.6, -3.4); gx.closePath(); gx.fill();
+  gx.fillRect(-8, -3.2, 3.4, 6.4);                 // carriage windows
+  gx.fillRect(-3.2, -3.2, 3.4, 6.4);
+  gx.fillStyle = '#fff6cf';                        // headlight
+  gx.beginPath(); gx.arc(10.4, 0, 1.5, 0, Math.PI*2); gx.fill();
+}
+function drawBoat(col, atDock, sel) {
+  const L = sel ? 1.25 : 1;
+  gx.scale(L, L);
+  gx.globalAlpha = atDock ? 0.65 : 1;
+  gx.lineJoin = 'round';
+  gx.strokeStyle = 'rgba(0,0,0,.75)'; gx.lineWidth = 3;
+  gx.fillStyle = col;
+  gx.beginPath();                                  // hull: pointed bow, square stern
+  gx.moveTo(13, 0);
+  gx.lineTo(4, -6.5);
+  gx.lineTo(-11, -6.5);
+  gx.lineTo(-11, 6.5);
+  gx.lineTo(4, 6.5);
+  gx.closePath();
+  gx.stroke(); gx.fill();
+  gx.fillStyle = 'rgba(6,10,8,.8)';                // superstructure
+  gx.fillRect(-7.5, -4, 8.5, 8);
+  gx.fillStyle = '#eaffe0';
+  gx.fillRect(-6.5, -3, 2, 6);
+  gx.fillRect(-3, -3, 2, 6);
+  if (!atDock) {                                   // wake off the stern
+    gx.strokeStyle = col + '77'; gx.lineWidth = 1.4;
+    gx.beginPath(); gx.moveTo(-12, -3); gx.lineTo(-19, -5.5);
+    gx.moveTo(-12, 3); gx.lineTo(-19, 5.5); gx.stroke();
+  }
+  gx.globalAlpha = 1;
+}
+
+function draw() {
+  gx.fillStyle = style().dark ? '#050a10' : '#e8e4dc';
+  gx.fillRect(0,0,W,H);
+  drawTiles();
+
+  const selR = ST.selRoute;
+  // ferry runs as water lines
+  if (ST.showFerry) {
+    for (let i = 0; i < RUNS.length; i++) {
+      const r = RUNS[i], A = TERM[r.a], B = TERM[r.b];
+      if (!A || !B) continue;
+      const on = selR && selR.kind === 'ferry' && selR.i === i;
+      const dim = selR && !on;
+      gx.setLineDash(on ? [] : [8,6]);
+      haloLine([[A[1],A[2]],[B[1],B[2]]], FERRYCOL + (on ? 'ff' : dim ? '33' : '99'), on ? 3.4 : 1.6);
+      gx.setLineDash([]);
+      if (on) {
+        const mid = toScreen((A[1]+B[1])/2, (A[2]+B[2])/2);
+        haloText(r.name, mid.x + 8, mid.y - 6, FERRYCOL, '700 ');
+      }
+    }
+    for (const [id,t] of Object.entries(TERM)) {
+      const p = toScreen(t[1],t[2]);
+      if (p.x < -40 || p.x > W+40 || p.y < -20 || p.y > H+20) continue;
+      const onRun = selR && selR.kind === 'ferry' && (RUNS[selR.i].a == id || RUNS[selR.i].b == id);
+      const dim = selR && selR.kind === 'ferry' && !onRun;
+      const rad = onRun ? 6 : 4;
+      gx.fillStyle = style().dark ? '#050805' : '#ffffff';
+      gx.beginPath(); gx.arc(p.x,p.y,rad,0,Math.PI*2); gx.fill();
+      gx.strokeStyle = FERRYCOL + (dim ? '55' : 'ff'); gx.lineWidth = onRun ? 2.4 : 1.6; gx.stroke();
+      if (view.z >= 9.2 || onRun) haloText(t[0], p.x+8, p.y+3.5, dim ? 'rgba(91,140,230,.5)' : FERRYCOL, onRun ? '700 ' : '');
+    }
+  }
+
+  // rail alignments
+  ST.hitStops = [];
+  if (ST.showRail) {
+    for (const [rid, sh] of ST.shapes) {
+      const on = selR && selR.kind === 'rail' && selR.id === rid;
+      const dim = selR && !on;
+      const col = (ST.railRoutes.get(rid) || {}).color;
+      const base = col ? '#' + col.replace('#','') : RAILCOL;
+      for (const line of sh.lines) {
+        haloLine(line, base + (on ? 'ff' : dim ? '44' : 'dd'), on ? 5 : 3);
+        if ((on || view.z >= 12) && !dim) {          // sleepers, so the line reads as track
+          gx.strokeStyle = style().dark ? 'rgba(4,7,4,.75)' : 'rgba(255,255,255,.65)';
+          gx.lineWidth = on ? 5 : 3;
+          gx.setLineDash([1.6, 7]);
+          gx.beginPath();
+          let st2 = false;
+          for (const [la, lo] of line) {
+            const q = toScreen(la, lo);
+            if (q.x < -400 || q.x > W+400 || q.y < -400 || q.y > H+400) { st2 = false; continue; }
+            st2 ? gx.lineTo(q.x, q.y) : gx.moveTo(q.x, q.y);
+            st2 = true;
+          }
+          gx.stroke(); gx.setLineDash([]);
+        }
+      }
+      const showStops = on || view.z >= 11;
+      if (!showStops) continue;
+      for (const st of sh.stops) {
+        const s = toScreen(st.lat, st.lon);
+        if (s.x < -30 || s.x > W+30 || s.y < -20 || s.y > H+20) continue;
+        const pinned = st.id === ST.commute.a || st.id === ST.commute.b;
+        const picked = ST.selStop === st.id;
+        const rad = picked ? 7 : pinned ? 5.5 : on ? 4.5 : 3.4;
+        ST.hitStops.push({ id: st.id, name: st.name, x: s.x, y: s.y, r: Math.max(9, rad + 4) });
+        gx.fillStyle = picked ? '#b4ffcd' : (style().dark ? '#050805' : '#ffffff');
+        gx.beginPath(); gx.arc(s.x, s.y, rad, 0, Math.PI*2); gx.fill();
+        gx.strokeStyle = dim ? base + '55' : pinned || picked ? '#b4ffcd' : base;
+        gx.lineWidth = pinned || picked ? 2.4 : 1.6; gx.stroke();
+        if (on || pinned || picked || view.z >= 12.5)
+          haloText(st.name.replace(/ Station$/,''), s.x + rad + 5, s.y + 3.5,
+            dim ? 'rgba(255,176,0,.45)' : pinned || picked ? (style().dark ? '#b4ffcd' : '#0b3a1f') : base,
+            pinned || picked || on ? '700 ' : '');
+      }
+    }
+  }
+
+  for (const v of vehicles()) {
+    const s = toScreen(v.lat, v.lon);
+    if (s.x < -26 || s.x > W+26 || s.y < -26 || s.y > H+26) continue;
+    const sel = ST.sel && ST.sel.key === v.key;
+    const col = v.kind === 'rail' ? RAILCOL : FERRYCOL;
+    const ang = v.kind === 'ferry'
+      ? (v.heading !== null && v.heading !== undefined ? (v.heading - 90) * Math.PI/180 : null)
+      : (v.orientation !== null && v.orientation !== undefined ? -v.orientation * Math.PI/180 : null);
+    // a cone showing which way it is pointing, drawn behind the body
+    if (ang !== null) {
+      gx.save(); gx.translate(s.x, s.y); gx.rotate(ang);
+      const g = gx.createLinearGradient(0, 0, 34, 0);
+      g.addColorStop(0, col + '66'); g.addColorStop(1, col + '00');
+      gx.fillStyle = g;
+      gx.beginPath(); gx.moveTo(6, 0); gx.lineTo(34, -12); gx.lineTo(34, 12);
+      gx.closePath(); gx.fill();
+      gx.restore();
+    }
+    gx.save(); gx.translate(s.x, s.y);
+    if (ang !== null) gx.rotate(ang);
+    if (v.kind === 'ferry') drawBoat(col, v.atDock, sel);
+    else drawTrain(col, sel);
+    gx.restore();
+    if (sel) {
+      gx.strokeStyle = '#b4ffcd'; gx.lineWidth = 1.6;
+      gx.beginPath(); gx.arc(s.x, s.y, 16, 0, Math.PI*2); gx.stroke();
+    }
+    if (view.z >= 10.5 || sel)
+      haloText(v.name, s.x + 15, s.y + 3.5, sel ? '#b4ffcd' : col, sel ? '700 ' : '');
+  }
+  if (ST.popup && ST.popup.follow) {
+    const v = vehicles().find(x => x.key === ST.popup.follow);
+    if (v) { const s = toScreen(v.lat, v.lon); ST.popup.x = s.x; ST.popup.y = s.y; }
+  }
+  drawPopup();
+  $('attrib').textContent = style().attrib;
+}
+function vehicles() {
+  const out = [];
+  if (ST.showRail) out.push(...ST.trains);
+  if (ST.showFerry) out.push(...ST.boats);
+  return out;
+}
+
+function fitBounds(pts, pad) {
+  if (!pts.length) return;
+  const la = pts.map(p => p[0]), lo = pts.map(p => p[1]);
+  const minLa = Math.min(...la), maxLa = Math.max(...la), minLo = Math.min(...lo), maxLo = Math.max(...lo);
+  view.lat = (minLa+maxLa)/2; view.lon = (minLo+maxLo)/2;
+  const a = project(minLa, minLo), b = project(maxLa, maxLo);
+  const dx = Math.max(1e-6, Math.abs(b.x-a.x)) * (pad || 1.35);
+  const dy = Math.max(1e-6, Math.abs(b.y-a.y)) * (pad || 1.35);
+  view.z = clamp(Math.min(Math.log2(W/(TILE*dx)), Math.log2(H/(TILE*dy))), 8, 15);
+}
+function selectRoute(r) {
+  ST.selRoute = r;
+  if (!r) { draw(); paint(); return; }
+  if (r.kind === 'rail') {
+    const sh = ST.shapes.get(r.id);
+    if (sh) fitBounds(sh.lines.flat());
+  } else {
+    const run = RUNS[r.i], A = TERM[run.a], B = TERM[run.b];
+    fitBounds([[A[1],A[2]],[B[1],B[2]]], 1.9);
+    ST.ferryFilter = A[0];
+    tab = 'ferry';
+    document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x.dataset.t === 'ferry'));
+  }
+  paint();
+}
+function renderRoutes() {
+  const box = $('routelist');
+  let h = '';
+  for (const [rid, sh] of ST.shapes) {
+    const r = ST.railRoutes.get(rid) || {};
+    const on = ST.selRoute && ST.selRoute.kind === 'rail' && ST.selRoute.id === rid;
+    h += '<div class="rt' + (on ? ' on' : '') + '" data-rail="' + esc(rid) + '">' +
+      '<span class="nm" style="color:' + RAILCOL + '">' + esc(r.shortName || rid) + '</span>' +
+      '<span class="sub">' + esc(r.longName || '') + '</span>' +
+      '<span class="n">' + sh.stops.length + ' stops</span></div>';
+  }
+  RUNS.forEach((r, i) => {
+    const on = ST.selRoute && ST.selRoute.kind === 'ferry' && ST.selRoute.i === i;
+    const n = ST.sailings.filter(s => s.from === TERM[r.a][0] || s.from === TERM[r.b][0]).length;
+    h += '<div class="rt' + (on ? ' on' : '') + '" data-ferry="' + i + '">' +
+      '<span class="nm" style="color:' + FERRYCOL + '">⛴</span>' +
+      '<span class="sub" style="color:var(--dim)">' + esc(r.name) + '</span>' +
+      '<span class="n">' + r.mins + ' min</span></div>';
+  });
+  box.innerHTML = h || '<div class="empty">loading routes…</div>';
+  box.querySelectorAll('[data-rail]').forEach(e => e.addEventListener('click', () =>
+    selectRoute(ST.selRoute && ST.selRoute.id === e.dataset.rail ? null : { kind:'rail', id:e.dataset.rail })));
+  box.querySelectorAll('[data-ferry]').forEach(e => e.addEventListener('click', () =>
+    selectRoute(ST.selRoute && ST.selRoute.kind === 'ferry' && ST.selRoute.i === +e.dataset.ferry
+      ? null : { kind:'ferry', i:+e.dataset.ferry })));
+}
+
+// a small board drawn right on the map, for a stop or for a moving vehicle
+function drawPopup() {
+  const p = ST.popup;
+  if (!p) return;
+  const accent = p.kind === 'ferry' ? FERRYCOL : RAILCOL;
+  const rows = (p.rows || []).slice(0, 4);
+  const journey = p.journey;
+  const wpx = journey ? 254 : 232;
+  const hpx = 26 + (journey ? 56 : 0) + rows.length * 17 + (p.foot ? 14 : 6);
+  const x = clamp(p.x + 16, 8, W - wpx - 8);
+  const y = clamp(p.y - hpx/2, 8, H - hpx - 8);
+
+  gx.fillStyle = 'rgba(5,8,5,.95)';
+  gx.fillRect(x, y, wpx, hpx);
+  gx.strokeStyle = accent; gx.lineWidth = 1.3;
+  gx.strokeRect(x+.5, y+.5, wpx, hpx);
+  gx.fillStyle = accent;                                   // accent stripe
+  gx.fillRect(x, y, 3, hpx);
+
+  gx.font = "700 11px 'JetBrains Mono', monospace";
+  gx.fillStyle = '#b4ffcd';
+  gx.fillText(p.title.slice(0, 27), x + 11, y + 17);
+  if (p.badge) {
+    gx.font = "9.5px 'JetBrains Mono', monospace";
+    gx.fillStyle = p.badgeCol || 'rgba(30,158,92,.9)';
+    const bw = gx.measureText(p.badge).width;
+    gx.fillText(p.badge, x + wpx - bw - 10, y + 17);
+  }
+
+  let cy = y + 26;
+  if (journey) {
+    // origin → destination, with a little progress rail underneath
+    gx.font = "10px 'JetBrains Mono', monospace";
+    gx.fillStyle = 'rgba(30,158,92,.95)';
+    gx.fillText(journey.from.slice(0, 13), x + 11, cy + 11);
+    const tw = gx.measureText(journey.to.slice(0, 13)).width;
+    gx.fillText(journey.to.slice(0, 13), x + wpx - tw - 10, cy + 11);
+    gx.fillStyle = accent;
+    gx.fillText('→', x + wpx/2 - 5, cy + 11);
+
+    const bx = x + 11, bw = wpx - 22, by = cy + 19;
+    gx.strokeStyle = 'rgba(30,158,92,.35)'; gx.lineWidth = 2;
+    gx.beginPath(); gx.moveTo(bx, by); gx.lineTo(bx + bw, by); gx.stroke();
+    gx.strokeStyle = accent; gx.lineWidth = 2;
+    gx.beginPath(); gx.moveTo(bx, by); gx.lineTo(bx + bw * clamp(journey.progress, 0, 1), by); gx.stroke();
+    gx.fillStyle = '#b4ffcd';
+    gx.beginPath(); gx.arc(bx + bw * clamp(journey.progress, 0, 1), by, 3.2, 0, Math.PI*2); gx.fill();
+
+    gx.font = "700 10.5px 'JetBrains Mono', monospace";
+    gx.fillStyle = '#b4ffcd';
+    gx.fillText('next  ' + journey.next.slice(0, 18), x + 11, cy + 40);
+    gx.font = "10px 'JetBrains Mono', monospace";
+    gx.fillStyle = journey.etaCol || accent;
+    const ew = gx.measureText(journey.eta).width;
+    gx.fillText(journey.eta, x + wpx - ew - 10, cy + 40);
+    cy += 56;
+  }
+
+  gx.font = "10px 'JetBrains Mono', monospace";
+  rows.forEach((r, i) => {
+    const yy = cy + 12 + i*17;
+    gx.fillStyle = '#b4ffcd'; gx.fillText(r.time, x + 11, yy);
+    gx.fillStyle = r.col; gx.fillText(r.status, x + 58, yy);
+    gx.fillStyle = 'rgba(30,158,92,.9)'; gx.fillText(r.dest.slice(0, 15), x + 120, yy);
+  });
+  if (!rows.length && !journey) {
+    gx.fillStyle = 'rgba(15,92,51,.9)';
+    gx.fillText('nothing in the next hour', x + 11, cy + 12);
+  }
+  if (p.foot) {
+    gx.font = "9px 'JetBrains Mono', monospace";
+    gx.fillStyle = 'rgba(15,92,51,.95)';
+    gx.fillText(p.foot, x + 11, y + hpx - 5);
+  }
+}
+
+const etaText = t => {
+  const m = Math.round((t - Date.now())/60000);
+  return (m <= 0 ? 'arriving' : m === 1 ? '1 min' : m + ' min') + '  ' + hhmm(t);
+};
+function popupForVehicle(v, x, y) {
+  buildVehiclePopup(v, x, y);
+  ST.popup.follow = v.key;
+}
+function buildVehiclePopup(v, x, y) {
+  if (v.kind === 'rail') {
+    const j = projectNext(v);
+    const dev = v.dev;
+    ST.popup = {
+      kind:'rail', title: v.name + '  ' + (v.headsign ? '→ ' + v.headsign : ''), x, y,
+      badge: dev === null ? 'no prediction' : Math.abs(dev) < 60 ? 'on time'
+        : (dev > 0 ? '+' : '−') + Math.round(Math.abs(dev)/60) + ' min',
+      badgeCol: dev === null ? '#7d8a83' : Math.abs(dev) < 60 ? '#00ff41'
+        : dev < 0 ? '#5b8ce6' : dev > 600 ? '#ff5c5c' : '#ffb000',
+      journey: j.next ? {
+        from: (j.from ? j.from.name : '').replace(/ Station$/,''),
+        to: (j.to ? j.to.name : v.headsign).replace(/ Station$/,''),
+        next: j.next.name.replace(/ Station$/,''),
+        eta: j.eta ? etaText(j.eta.t) : '—',
+        etaCol: j.eta && j.eta.estimated ? '#7d8a83' : '#b4ffcd',
+        progress: j.total > 1 ? j.index / (j.total - 1) : 0
+      } : null,
+      rows: [],
+      foot: j.eta && j.eta.estimated ? 'eta estimated from distance' : 'eta from the live feed'
+    };
+  } else {
+    const eta = v.eta;
+    const late = v.left && v.sched ? Math.round((v.left - v.sched)/60000) : null;
+    ST.popup = {
+      kind:'ferry', title: v.name, x, y,
+      badge: late === null ? (v.atDock ? 'at dock' : 'under way')
+        : Math.abs(late) < 1 ? 'left on time' : (late > 0 ? '+' : '−') + Math.abs(late) + ' min',
+      badgeCol: late === null ? '#7d8a83' : Math.abs(late) < 1 ? '#00ff41'
+        : late < 0 ? '#5b8ce6' : late > 10 ? '#ff5c5c' : '#ffb000',
+      journey: {
+        from: (v.from || '?'), to: (v.to || '?'),
+        next: v.to || 'terminal',
+        eta: eta ? etaText(eta) : '—',
+        etaCol: '#b4ffcd',
+        progress: v.atDock ? 0 : (v.sched && eta ? clamp((Date.now()-v.sched)/((eta - v.sched)||1), 0, 1) : 0.5)
+      },
+      rows: [],
+      foot: (v.sched ? 'scheduled ' + hhmm(v.sched) : '') +
+            (v.left ? ' · left ' + hhmm(v.left) : v.atDock ? ' · still at dock' : '') +
+            (v.speed ? ' · ' + v.speed.toFixed(0) + ' kn' : '')
+    };
+  }
+}
+function popupForStop(id, x, y) {
+  const st = ST.railStops.get(id);
+  const list = (ST.arrivals.get(id) || []).filter(a => (a.pred||a.sched) > Date.now()-60000).slice(0,4);
+  ST.popup = { kind:'rail', title: (st ? st.name : '').replace(/ Station$/,''), x, y,
+    rows: list.map(a => { const t = a.pred||a.sched;
+      const d = a.pred ? Math.round((a.pred-a.sched)/60000) : null;
+      return { time: hhmm(t), dest: a.headsign || a.route,
+        status: d === null ? 'sched' : Math.abs(d) < 1 ? 'on time' : (d>0?'+':'') + d + ' min',
+        col: d === null ? '#7d8a83' : Math.abs(d)<1 ? '#00ff41' : d<0 ? '#5b8ce6' : d>10 ? '#ff5c5c' : '#ffb000' }; }) };
+}
+function popupForTerminal(name, x, y) {
+  const list = ST.sailings.filter(s => s.from === name && s.sched > Date.now()-60000)
+    .sort((a,b) => a.sched-b.sched).slice(0,4);
+  ST.popup = { kind:'ferry', title: name, x, y,
+    rows: list.map(s => { const d = s.actual ? Math.round((s.actual-s.sched)/60000) : null;
+      return { time: hhmm(s.sched), dest: s.to,
+        status: d === null ? (s.atDock ? 'at dock' : 'sched') : Math.abs(d)<1 ? 'on time' : (d>0?'+':'')+d+' min',
+        col: d === null ? '#7d8a83' : Math.abs(d)<1 ? '#00ff41' : d<0 ? '#5b8ce6' : d>10 ? '#ff5c5c' : '#ffb000' }; }) };
+}
+
+/* ============================================================
+   the board
+   ============================================================ */
+let tab = 'commute';
+function railStopOptions(selected) {
+  const stops = [];
+  for (const [, sh] of ST.shapes) for (const st of sh.stops)
+    if (!stops.find(x => x.id === st.id)) stops.push(st);
+  stops.sort((a,b) => a.name.localeCompare(b.name));
+  return stops.map(s => '<option value="' + esc(s.id) + '"' + (s.id === selected ? ' selected' : '') + '>' +
+    esc(s.name.replace(/ Station$/,'')) + '</option>').join('');
+}
+function departuresTable(stopId, limit) {
+  const st = ST.railStops.get(stopId);
+  const list = (ST.arrivals.get(stopId) || []).filter(a => (a.pred || a.sched) > Date.now() - 90000).slice(0, limit || 6);
+  if (!st) return '<div class="empty">pick a station</div>';
+  if (!list.length) return '<div class="empty">no departures in the next hour' +
+    ($('src').value === 'live' ? ' — or the stop id has no predictions' : '') + '</div>';
+  return '<table><tr><th>due</th><th>in</th><th>toward</th><th>status</th></tr>' +
+    list.map((a, i) => {
+      const t = a.pred || a.sched;
+      return '<tr' + (i === 0 ? ' class="next"' : '') + '>' +
+        '<td class="t-time">' + hhmm(t) + '</td>' +
+        '<td class="t-in">' + inMin(t) + '</td>' +
+        '<td class="t-dest">' + esc(a.headsign || a.route) + '</td>' +
+        '<td>' + delayCell(a.sched, a.pred) + '</td></tr>';
+    }).join('') + '</table>';
+}
+function commuteBoard() {
+  const A = ST.commute.a, B = ST.commute.b;
+  const nameOf = id => (ST.railStops.get(id) || {}).name || '—';
+  return '<div class="row" style="margin:0 0 12px">' +
+      '<span class="lbl">from</span><select id="c-a">' + railStopOptions(A) + '</select>' +
+      '<span class="lbl">to</span><select id="c-b">' + railStopOptions(B) + '</select>' +
+      '<button class="btn sm" id="c-swap">swap</button>' +
+      '<span class="note" style="margin:0">saved on this device</span></div>' +
+    '<div class="cols2">' +
+      '<div class="tt"><h3>' + esc(nameOf(A).replace(/ Station$/,'')) +
+        ' <span class="sub">→ ' + esc(nameOf(B).replace(/ Station$/,'')) + '</span>' +
+        '<span class="sp"></span><span class="sub">morning</span></h3>' + departuresTable(A, 6) + '</div>' +
+      '<div class="tt"><h3>' + esc(nameOf(B).replace(/ Station$/,'')) +
+        ' <span class="sub">→ ' + esc(nameOf(A).replace(/ Station$/,'')) + '</span>' +
+        '<span class="sp"></span><span class="sub">evening</span></h3>' + departuresTable(B, 6) + '</div>' +
+    '</div>' +
+    '<p class="note">Both boards show every departure from that platform, so read the <b>toward</b> column ' +
+    'to pick your direction. Times switch from scheduled to predicted as soon as the train is reporting.</p>';
+}
+function railBoard() {
+  const groups = [];
+  for (const [, sh] of ST.shapes) for (const st of sh.stops)
+    if (!groups.find(x => x.id === st.id)) groups.push(st);
+  const sel = ST.selStop || (groups[0] && groups[0].id);
+  return '<div class="row" style="margin:0 0 12px"><span class="lbl">station</span>' +
+    '<select id="r-stop">' + railStopOptions(sel) + '</select></div>' +
+    '<div class="tt"><h3>' + esc(((ST.railStops.get(sel)||{}).name || '').replace(/ Station$/,'')) +
+    '<span class="sp"></span><span class="sub">next 75 minutes</span></h3>' + departuresTable(sel, 12) + '</div>';
+}
+function ferryBoard() {
+  const now = Date.now();
+  const f = (ST.ferryFilter || '').trim().toLowerCase();
+  const byRun = new Map();
+  for (const s of ST.sailings) {
+    if (!s.sched || s.sched < now - 30*60000) continue;
+    if (f && !(s.from + ' ' + s.to).toLowerCase().includes(f)) continue;
+    if (!byRun.has(s.run)) byRun.set(s.run, []);
+    byRun.get(s.run).push(s);
+  }
+  const runs = [...byRun.entries()]
+    .map(([k, v]) => [k, v.sort((a,b) => a.sched - b.sched)])
+    .sort((a,b) => a[1][0].sched - b[1][0].sched);
+  const head = '<div class="row" style="margin:0 0 12px"><span class="lbl">terminal</span>' +
+    '<input type="text" id="f-filter" value="' + esc(ST.ferryFilter || '') + '" placeholder="mukilteo, seattle, edmonds…">' +
+    '<button class="btn sm" data-ff="">all</button>' +
+    ['Mukilteo','Seattle','Edmonds','Fauntleroy'].map(t =>
+      '<button class="btn sm' + (f === t.toLowerCase() ? ' on' : '') + '" data-ff="' + t + '">' + t + '</button>').join('') +
+    '</div>';
+  if (!runs.length) return head + '<div class="empty">no sailings' +
+    ($('src').value === 'live' ? ' — add a WSDOT key for today\'s schedule' : '') + '</div>';
+  return head + '<div class="cols2">' + runs.map(([name, list]) => {
+    list.sort((a,b) => a.sched - b.sched);
+    return '<div class="tt"><h3>' + esc(name) + '<span class="sp"></span>' +
+      '<span class="sub">' + list.length + ' sailing' + (list.length===1?'':'s') + '</span></h3>' +
+      '<table><tr><th>scheduled</th><th>in</th><th>vessel</th><th>status</th></tr>' +
+      list.slice(0,6).map((s,i) => {
+        const t = s.actual || s.sched;
+        return '<tr' + (i===0 ? ' class="next"' : '') + '>' +
+          '<td class="t-time">' + hhmm(s.sched) + '</td>' +
+          '<td class="t-in">' + inMin(s.sched) + '</td>' +
+          '<td class="t-dest">' + esc(s.vessel || '—') + '</td>' +
+          '<td>' + (s.actual ? delayCell(s.sched, s.actual) : s.atDock ? '<span class="ontime">at dock</span>'
+            : '<span class="sched">scheduled</span>') +
+          (s.eta ? ' <span class="t-note">eta ' + hhmm(s.eta) + '</span>' : '') + '</td></tr>';
+      }).join('') + '</table></div>';
+  }).join('') + '</div>' +
+  '<p class="note">WSDOT reports <b>LeftDock</b> and <b>Eta</b> from the boats themselves, so a delay here is measured, not guessed.</p>';
+}
+function renderBoard() {
+  const b = $('boardbody');
+  b.innerHTML = tab === 'commute' ? commuteBoard() : tab === 'rail' ? railBoard() : ferryBoard();
+  if (tab === 'commute') {
+    $('c-a').addEventListener('change', e => { ST.commute.a = e.target.value; saveCommute(); loadArrivals(ST.commute.a).then(paint); });
+    $('c-b').addEventListener('change', e => { ST.commute.b = e.target.value; saveCommute(); loadArrivals(ST.commute.b).then(paint); });
+    $('c-swap').addEventListener('click', () => { const t = ST.commute.a; ST.commute.a = ST.commute.b; ST.commute.b = t;
+      saveCommute(); paint(); });
+  }
+  if (tab === 'rail') $('r-stop').addEventListener('change', e => {
+    ST.selStop = e.target.value; loadArrivals(ST.selStop).then(paint); });
+  if (tab === 'ferry') {
+    const inp = $('f-filter');
+    if (inp) inp.addEventListener('input', e => { ST.ferryFilter = e.target.value; renderBoard();
+      const el = $('f-filter'); if (el) { el.focus(); } });
+    b.querySelectorAll('[data-ff]').forEach(el => el.addEventListener('click', () => {
+      ST.ferryFilter = el.dataset.ff; renderBoard(); }));
+  }
+}
+function saveCommute() { try { localStorage.setItem('pnw-commute', JSON.stringify(ST.commute)); } catch (e) {} }
+
+/* ============================================================
+   paint
+   ============================================================ */
+function paint() {
+  draw();
+  $('p-mode').textContent = $('src').value === 'demo' ? 'demo data' : 'live APIs';
+  $('p-mode').className = 'pill ' + ($('src').value === 'demo' ? 'demo' : 'live');
+  $('p-link').textContent = 'Link ' + ST.trains.length;
+  $('p-ferry').textContent = 'ferries ' + ST.boats.length;
+  const age = ST.lastFetch ? (Date.now()-ST.lastFetch)/1000 : null;
+  const wait = backoffLeft();
+  $('p-age').textContent = wait ? 'backing off ' + wait + 's' : age === null ? '—' : age.toFixed(0) + 's ago';
+  $('p-age').className = 'pill' + (ST.err || wait ? ' bad' : age !== null && age < 70 ? ' live' : '');
+  $('clock').textContent = new Date().toLocaleTimeString();
+
+  const list = vehicles().slice().sort((a,b) => (a.kind === b.kind ? 0 : a.kind === 'rail' ? -1 : 1) ||
+    String(a.name).localeCompare(String(b.name)));
+  $('vlist').innerHTML = list.map(v =>
+    '<div class="body" style="padding:5px 11px;cursor:pointer;border-bottom:1px solid #0d1f14"' +
+    ' data-k="' + esc(v.key) + '">' +
+    '<span style="color:' + (v.kind==='rail'?RAILCOL:FERRYCOL) + ';font-weight:700">' + esc(v.name) + '</span> ' +
+    '<span style="color:var(--faint);font-size:10.5px">' +
+    esc(v.kind === 'rail' ? (v.headsign || '') : (v.from + ' → ' + v.to)) + '</span>' +
+    (v.kind === 'rail' && v.dev !== null
+      ? ' <span class="' + (Math.abs(v.dev)<60?'ontime':v.dev<0?'early':v.dev>600?'vlate':'late') + '" style="font-size:10.5px">' +
+        (Math.abs(v.dev)<60 ? 'on time' : (v.dev>0?'+':'') + Math.round(v.dev/60) + 'm') + '</span>' : '') +
+    (v.kind === 'ferry' && v.eta ? ' <span class="t-note">eta ' + hhmm(v.eta) + '</span>' : '') +
+    '</div>').join('') || '<div class="empty">nothing tracked</div>';
+  $('vlist').querySelectorAll('[data-k]').forEach(e => e.addEventListener('click', () => {
+    const v = vehicles().find(x => x.key === e.dataset.k);
+    if (!v) return;
+    ST.sel = v;
+    view.lat = v.lat; view.lon = v.lon;
+    if (view.z < 11) view.z = 12;
+    const s = toScreen(v.lat, v.lon);
+    popupForVehicle(v, s.x, s.y);
+    paint();
+  }));
+
+  if (ST.popup && ST.popup.follow) {
+    const lv = vehicles().find(x => x.key === ST.popup.follow);
+    if (lv) { const s = toScreen(lv.lat, lv.lon); popupForVehicle(lv, s.x, s.y); }
+  }
+  const v = ST.sel;
+  $('detail').innerHTML = v ? (v.kind === 'rail' ? [
+      ['route', v.name + (v.long ? ' · ' + v.long : '')], ['toward', v.headsign || '—'],
+      ['schedule', v.dev === null ? 'no prediction' : Math.abs(v.dev)<60 ? 'on time'
+        : (v.dev>0 ? Math.round(v.dev/60)+' min late' : Math.round(-v.dev/60)+' min early')],
+      ['next stop', v.next || '—'], ['vehicle', v.vehicleId || '—'],
+      ['source', v.predicted ? 'real-time' : 'schedule only']
+    ] : [
+      ['vessel', v.name], ['run', (v.from||'?') + ' → ' + (v.to||'?')],
+      ['scheduled', v.sched ? hhmm(v.sched) : '—'],
+      ['left dock', v.left ? hhmm(v.left) + '  (' + delayCell(v.sched, v.left).replace(/<[^>]+>/g,'') + ')' : v.atDock ? 'still at dock' : '—'],
+      ['eta', v.eta ? hhmm(v.eta) + '  · in ' + inMin(v.eta) : '—'],
+      ['speed', v.speed ? v.speed.toFixed(1) + ' kn' : '—'],
+      ['in service', v.inService ? 'yes' : 'no']
+    ]).map(r => '<div><span class="k">' + r[0] + '</span><span class="v">' + r[1] + '</span></div>').join('')
+    : '<span class="note">tap a train or a boat</span>';
+
+  renderRoutes();
+  if (ST.err) $('srcnote').innerHTML = '<span style="color:var(--red)">' + esc(ST.err) + '</span><br>' +
+    'If that is a CORS block, point the base fields at a small proxy of your own and let it hold the keys.';
+  renderBoard();
+}
+
+/* ============================================================
+   interaction
+   ============================================================ */
+let drag = null;
+cv.addEventListener('mousedown', e => { drag = { x:e.clientX, y:e.clientY, lat:view.lat, lon:view.lon, moved:0 }; });
+addEventListener('mousemove', e => {
+  if (!drag) return;
+  const s = worldSize(), c = project(drag.lat, drag.lon);
+  drag.moved += Math.abs(e.movementX) + Math.abs(e.movementY);
+  const ll = unproject(c.x - (e.clientX-drag.x)/s, c.y - (e.clientY-drag.y)/s);
+  view.lat = clamp(ll.lat, 46.5, 49.2); view.lon = clamp(ll.lon, -124.5, -121.0);
+  draw();
+});
+addEventListener('mouseup', e => {
+  if (drag && drag.moved < 4) {
+    const r = cv.getBoundingClientRect(), mx = e.clientX-r.left, my = e.clientY-r.top;
+    // rail stops
+    let hit = null, hd = 1e9;
+    for (const h of (ST.hitStops || [])) {
+      const d = Math.hypot(h.x-mx, h.y-my);
+      if (d < h.r && d < hd) { hd = d; hit = h; }
+    }
+    if (hit) {
+      const again = ST.selStop === hit.id;
+      ST.selStop = hit.id;
+      loadArrivals(hit.id).then(() => { popupForStop(hit.id, hit.x, hit.y); paint(); });
+      popupForStop(hit.id, hit.x, hit.y);
+      if (again) { tab = 'rail';
+        document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x.dataset.t === 'rail')); }
+      paint(); drag = null; return;
+    }
+    // ferry terminals
+    if (ST.showFerry) {
+      let t = null, td = 1e9;
+      for (const [, tm] of Object.entries(TERM)) {
+        const s = toScreen(tm[1], tm[2]);
+        const d = Math.hypot(s.x-mx, s.y-my);
+        if (d < 12 && d < td) { td = d; t = { name: tm[0], x:s.x, y:s.y }; }
+      }
+      if (t) {
+        const again = ST.popup && ST.popup.title === t.name;
+        popupForTerminal(t.name, t.x, t.y);
+        if (again) { ST.ferryFilter = t.name; tab = 'ferry';
+          document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x.dataset.t === 'ferry')); }
+        paint(); drag = null; return;
+      }
+    }
+    // vehicles
+    let best = null, bd = 18;
+    for (const v of vehicles()) { const s = toScreen(v.lat,v.lon); const d = Math.hypot(s.x-mx, s.y-my);
+      if (d < bd) { bd = d; best = v; } }
+    if (best) { ST.sel = best; popupForVehicle(best, toScreen(best.lat,best.lon).x, toScreen(best.lat,best.lon).y); paint(); }
+    else { ST.popup = null; ST.sel = null; paint(); }
+  }
+  drag = null;
+});
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const r = cv.getBoundingClientRect();
+  const b4 = toLatLon(e.clientX-r.left, e.clientY-r.top);
+  view.z = clamp(view.z + (e.deltaY < 0 ? .4 : -.4), 8, 16);
+  const af = toLatLon(e.clientX-r.left, e.clientY-r.top);
+  view.lat += b4.lat-af.lat; view.lon += b4.lon-af.lon;
+  draw();
+}, { passive:false });
+$('z-in').addEventListener('click', () => { view.z = clamp(view.z+1,8,16); draw(); });
+$('z-out').addEventListener('click', () => { view.z = clamp(view.z-1,8,16); draw(); });
+$('z-home').addEventListener('click', () => { Object.assign(view, HOME); draw(); });
+$('m-rail').addEventListener('click', () => { ST.showRail = !ST.showRail; $('m-rail').classList.toggle('on', ST.showRail); paint(); });
+$('m-ferry').addEventListener('click', () => { ST.showFerry = !ST.showFerry; $('m-ferry').classList.toggle('on', ST.showFerry); paint(); });
+document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.remove('on'));
+  b.classList.add('on'); tab = b.dataset.t; renderBoard();
+}));
+$('b-refresh').addEventListener('click', load);
+$('src').addEventListener('change', () => {
+  ST.railRouteIds = null; ST.shapes.clear(); ST.asked.clear(); ST.railStops.clear(); ST.arrivals.clear();
+  ST.sel = null; ST.selStop = null;
+  try { localStorage.setItem('pnw-src', $('src').value); } catch (e) {}
+  load().then(pickCommuteDefaults);
+});
+['obakey','obabase','wsfkey','wsfbase'].forEach(id => $(id).addEventListener('change', () => {
+  try { localStorage.setItem('pnw-'+id, $(id).value); } catch (e) {} }));
+let timer = null;
+function reschedule() { clearInterval(timer); const s = +$('every').value; if (s) timer = setInterval(load, s*1000); }
+$('every').addEventListener('change', reschedule);
+addEventListener('resize', () => { sizeMap(); draw(); });
+setInterval(() => { if (ST.lastFetch) { $('clock').textContent = new Date().toLocaleTimeString(); renderBoard(); } }, 15000);
+
+/* ============================================================
+   demo — shaped exactly like the two real APIs
+   ============================================================ */
+const LINE1 = [['Lynnwood City Center',47.8154,-122.2966],['Mountlake Terrace',47.7856,-122.3141],
+  ['Shoreline North',47.7550,-122.3210],['Northgate',47.7027,-122.3277],['Roosevelt',47.6760,-122.3175],
+  ['U District',47.6602,-122.3138],['University of Washington',47.6497,-122.3037],['Capitol Hill',47.6193,-122.3208],
+  ['Westlake',47.6115,-122.3376],['Symphony',47.6079,-122.3352],['Pioneer Square',47.6027,-122.3316],
+  ['Intl District',47.5985,-122.3280],['Stadium',47.5911,-122.3273],['SODO',47.5814,-122.3273],
+  ['Beacon Hill',47.5793,-122.3117],['Mount Baker',47.5766,-122.2977],['Columbia City',47.5601,-122.2925],
+  ['Othello',47.5379,-122.2815],['Rainier Beach',47.5222,-122.2794],['Tukwila Intl Blvd',47.4640,-122.2880],
+  ['SeaTac Airport',47.4452,-122.2966],['Angle Lake',47.4224,-122.2979]];
+const LINE2 = [['South Bellevue',47.5860,-122.1920],['East Main',47.6015,-122.1900],
+  ['Bellevue Downtown',47.6155,-122.1930],['Wilburton',47.6180,-122.1830],['Spring District',47.6260,-122.1750],
+  ['BelRed',47.6280,-122.1620],['Overlake Village',47.6410,-122.1370],['Redmond Technology',47.6446,-122.1310],
+  ['Marymoor Village',47.6640,-122.1180],['Downtown Redmond',47.6740,-122.1250]];
+const LINET = [['Tacoma Dome',47.2400,-122.4280],['South 25th',47.2440,-122.4340],['Union Station',47.2480,-122.4380],
+  ['Convention Center',47.2520,-122.4400],['Theater District',47.2540,-122.4420],['Old City Hall',47.2560,-122.4390],
+  ['S 4th',47.2580,-122.4370],['Stadium District',47.2620,-122.4360],['Tacoma General',47.2650,-122.4460],
+  ['Hilltop District',47.2540,-122.4520]];
+const VIA = {
+  '40_1LINE':[[47.7400,-122.3240],[47.6900,-122.3260],[47.6300,-122.3260],[47.5900,-122.3290],
+    [47.5700,-122.3050],[47.5500,-122.2900],[47.5300,-122.2790],[47.5050,-122.2830],[47.4820,-122.2900]],
+  '40_2LINE':[[47.6060,-122.1910],[47.6200,-122.1790],[47.6270,-122.1690],[47.6330,-122.1520],
+    [47.6420,-122.1340],[47.6560,-122.1210]],
+  '40_TLINE':[[47.2500,-122.4390],[47.2570,-122.4380]]
+};
+const DEMO_RAIL = [
+  { id:'40_1LINE', shortName:'1 Line', longName:'Angle Lake – Lynnwood', stops:LINE1, headway:8 },
+  { id:'40_2LINE', shortName:'2 Line', longName:'South Bellevue – Downtown Redmond', stops:LINE2, headway:10 },
+  { id:'40_TLINE', shortName:'T Line', longName:'Tacoma Dome – Hilltop', stops:LINET, headway:12 }
+];
+function catmull(p, per) {
+  if (p.length < 3) return p.slice();
+  const o = [];
+  for (let i = 0; i < p.length-1; i++) {
+    const a = p[Math.max(0,i-1)], b = p[i], c = p[i+1], d = p[Math.min(p.length-1,i+2)];
+    for (let j = 0; j < per; j++) { const t = j/per, t2 = t*t, t3 = t2*t;
+      o.push([0.5*((2*b[0])+(-a[0]+c[0])*t+(2*a[0]-5*b[0]+4*c[0]-d[0])*t2+(-a[0]+3*b[0]-3*c[0]+d[0])*t3),
+              0.5*((2*b[1])+(-a[1]+c[1])*t+(2*a[1]-5*b[1]+4*c[1]-d[1])*t2+(-a[1]+3*b[1]-3*c[1]+d[1])*t3)]); }
+  }
+  o.push(p[p.length-1]);
+  return o;
+}
+function encNum(v){ v = v<0 ? ~(v<<1) : (v<<1); let s='';
+  while (v>=0x20){ s += String.fromCharCode((0x20|(v&0x1f))+63); v>>=5; } return s + String.fromCharCode(v+63); }
+function encodePolyline(c){ let o='',la=0,lo=0;
+  for (const [lat,lon] of c){ const a=Math.round(lat*1e5), b=Math.round(lon*1e5); o+=encNum(a-la)+encNum(b-lo); la=a; lo=b; }
+  return o; }
+function railPath(R) {
+  const pts = R.stops.map(s => [s[1],s[2]]);
+  for (const v of (VIA[R.id]||[])) {
+    let best = 1, bd = Infinity;
+    for (let i = 1; i < pts.length; i++) {
+      const d = haversine(v[0],v[1],(pts[i-1][0]+pts[i][0])/2,(pts[i-1][1]+pts[i][1])/2);
+      if (d < bd) { bd = d; best = i; }
+    }
+    pts.splice(best, 0, v);
+  }
+  return catmull(pts, 6);
+}
+const legs = pts => { const o=[0]; for (let i=1;i<pts.length;i++) o.push(o[i-1]+haversine(pts[i-1][0],pts[i-1][1],pts[i][0],pts[i][1])*1000); return o; };
+function ptAt(pts, d, dist) {
+  if (dist <= 0) return { lat:pts[0][0], lon:pts[0][1], bearing:0 };
+  if (dist >= d[d.length-1]) return { lat:pts[pts.length-1][0], lon:pts[pts.length-1][1], bearing:0 };
+  let i = 1; while (i < d.length && d[i] < dist) i++;
+  const f = (dist-d[i-1])/((d[i]-d[i-1])||1), a = pts[i-1], b = pts[i];
+  const lat = a[0]+(b[0]-a[0])*f, lon = a[1]+(b[1]-a[1])*f;
+  return { lat, lon, bearing: Math.atan2(b[0]-a[0],(b[1]-a[1])*Math.cos(lat*Math.PI/180))*180/Math.PI };
+}
+const demoDev = new Map();
+function demoStopsForRoute(id) {
+  const R = DEMO_RAIL.find(r => r.id === id);
+  if (!R) return { entry:{}, references:{} };
+  const stops = R.stops.map((s,i) => ({ id:R.id+'_S'+i, lat:s[1], lon:s[2], name:s[0], code:String(100+i) }));
+  const path = railPath(R);
+  return { entry: { routeId:id, stopIds: stops.map(s => s.id),
+      stopGroupings:[{ type:'direction', ordered:true, stopGroups:[
+        { id:'0', name:{ name:R.stops[R.stops.length-1][0] }, stopIds:stops.map(s=>s.id),
+          polylines:[{ points: encodePolyline(path) }] },
+        { id:'1', name:{ name:R.stops[0][0] }, stopIds:stops.map(s=>s.id).reverse(),
+          polylines:[{ points: encodePolyline(path.slice().reverse()) }] }]}],
+      polylines:[{ points: encodePolyline(path) }] },
+    references: { routes:[{ id:R.id, shortName:R.shortName, longName:R.longName, type:0, agencyId:'40' }],
+      stops, trips:[], agencies:[], situations:[] } };
+}
+function demoTripsForRoute(id) {
+  const R = DEMO_RAIL.find(r => r.id === id);
+  if (!R) return { list:[], references:{} };
+  const now = Date.now(), path = railPath(R), d = legs(path), total = d[d.length-1];
+  const runMin = (total/1000)/34*60;
+  const list = [], trips = [];
+  const stops = R.stops.map((s,i) => ({ id:R.id+'_S'+i, lat:s[1], lon:s[2], name:s[0] }));
+  for (const dir of ['0','1']) {
+    for (let k = -1; k <= 1; k++) {
+      const start = Math.floor(now/(R.headway*60000))*R.headway*60000 + k*R.headway*60000 + (dir==='1'?R.headway*30000:0);
+      const tripId = R.id+'_'+dir+'_'+start;
+      const el = now - start;
+      if (el < 0 || el > runMin*60000) continue;
+      let dv = demoDev.get(tripId);
+      if (!dv) { dv = { d:(Math.random()*300-90)|0, drift:Math.random()*2-1 }; demoDev.set(tripId, dv); }
+      dv.d = clamp(dv.d + dv.drift*5, -180, 600);
+      const along = clamp((el - dv.d*1000)/(runMin*60000), 0, 1) * total;
+      const pos = ptAt(dir === '0' ? path : path.slice().reverse(), d, along);
+      const si = Math.min(stops.length-1, Math.round(along/total*(stops.length-1)));
+      trips.push({ id:tripId, routeId:R.id, directionId:dir,
+        tripHeadsign: dir==='0' ? R.stops[R.stops.length-1][0] : R.stops[0][0] });
+      list.push({ tripId, serviceDate:0, status:{ activeTripId:tripId, position:{ lat:pos.lat, lon:pos.lon },
+        orientation:pos.bearing, scheduleDeviation:Math.round(dv.d), predicted:true, lastUpdateTime:now-8000,
+        nextStop:R.id+'_S'+(dir==='0'?Math.min(stops.length-1,si+1):Math.max(0,si-1)),
+        nextStopTimeOffset: 40 + (Math.abs(hash(tripId+si))%110),
+        vehicleId:'40_'+(100+(Math.abs(hash(tripId))%80)) } });
+    }
+  }
+  return { list, references:{ routes:[{ id:R.id, shortName:R.shortName, longName:R.longName, type:0 }],
+    stops, trips, agencies:[], situations:[] } };
+}
+function hash(s){ let h=0; for (let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))|0; return h; }
+function demoArrivals(stopId) {
+  const R = DEMO_RAIL.find(r => stopId.startsWith(r.id));
+  if (!R) return { entry:{ arrivalsAndDepartures:[] }, references:{} };
+  const idx = +stopId.split('_S')[1];
+  const now = Date.now(), out = [];
+  for (const dir of ['0','1']) {
+    const frac = dir === '0' ? idx/(R.stops.length-1) : 1 - idx/(R.stops.length-1);
+    for (let k = 0; k <= 8; k++) {
+      const start = Math.floor(now/(R.headway*60000))*R.headway*60000 + k*R.headway*60000 + (dir==='1'?R.headway*30000:0);
+      const sched = start + frac * (R.stops.length*2.2*60000);
+      if (sched < now - 60000 || sched > now + 78*60000) continue;
+      const key = R.id+'_'+dir+'_'+start;
+      const dv = demoDev.get(key);
+      out.push({ routeShortName:R.shortName, tripHeadsign: dir==='0' ? R.stops[R.stops.length-1][0] : R.stops[0][0],
+        scheduledArrivalTime: sched, predictedArrivalTime: dv ? sched + dv.d*1000 : 0, tripId:key });
+    }
+  }
+  out.sort((a,b) => (a.predictedArrivalTime||a.scheduledArrivalTime)-(b.predictedArrivalTime||b.scheduledArrivalTime));
+  return { entry:{ stopId, arrivalsAndDepartures: out }, references:{} };
+}
+function demoVessels() {
+  const now = Date.now(), out = [];
+  RUNS.forEach((r, ri) => {
+    const A = TERM[r.a], B = TERM[r.b];
+    for (let leg = 0; leg < 2; leg++) {
+      const start = Math.floor(now/(r.headway*60000))*r.headway*60000 + leg*r.headway*30000;
+      const el = now - start;
+      if (el < -60000 || el > r.mins*60000 + 300000) continue;
+      const late = ((hash(r.name+leg) % 9) - 2) * 60000;
+      const f = clamp((el - late)/(r.mins*60000), 0, 1);
+      const from = leg ? B : A, to = leg ? A : B;
+      out.push({ VesselID: ri*2+leg+1, VesselName: VESSELS[(ri*2+leg) % VESSELS.length],
+        Latitude: from[1] + (to[1]-from[1])*f, Longitude: from[2] + (to[2]-from[2])*f,
+        Heading: Math.atan2(to[2]-from[2], to[1]-from[1])*180/Math.PI,
+        Speed: f > 0.05 && f < 0.95 ? 15 + (hash(r.name)%6) : 0,
+        DepartingTerminalName: from[0], ArrivingTerminalName: to[0],
+        ScheduledDeparture: '/Date(' + start + '-0700)/',
+        LeftDock: f > 0.02 ? '/Date(' + (start + late) + '-0700)/' : null,
+        Eta: '/Date(' + (start + late + r.mins*60000) + '-0700)/',
+        AtDock: f <= 0.02 || f >= 0.99, InService: true });
+    }
+  });
+  return out;
+}
+function demoSailings() {
+  const now = Date.now(), out = [];
+  for (const r of RUNS) {
+    const A = TERM[r.a][0], B = TERM[r.b][0];
+    for (let k = -1; k < 7; k++) {
+      for (let leg = 0; leg < 2; leg++) {
+        const sched = Math.floor(now/(r.headway*60000))*r.headway*60000 + k*r.headway*60000 + leg*r.headway*30000;
+        if (sched < now - 25*60000 || sched > now + 5*3600000) continue;
+        const late = ((hash(r.name+leg+k) % 9) - 2) * 60000;
+        const departed = sched < now;
+        out.push({ run: (leg ? B : A) + ' → ' + (leg ? A : B), from: leg ? B : A, to: leg ? A : B, sched,
+          actual: departed ? sched + late : null, eta: sched + late + r.mins*60000,
+          vessel: VESSELS[(hash(r.name+leg) & 0xff) % VESSELS.length],
+          atDock: !departed && sched - now < 10*60000 });
+      }
+    }
+  }
+  return out;
+}
+
+/* ============================================================
+   boot
+   ============================================================ */
+function pickCommuteDefaults() {
+  if (ST.commute.a && ST.railStops.has(ST.commute.a)) return;
+  const find = re => { for (const [, s] of ST.railStops) if (re.test(s.name)) return s.id; return ''; };
+  ST.commute.a = find(/bel-?red/i) || [...ST.railStops.keys()][0] || '';
+  ST.commute.b = find(/spring district/i) || [...ST.railStops.keys()][1] || '';
+  saveCommute();
+  Promise.all([loadArrivals(ST.commute.a), loadArrivals(ST.commute.b)]).then(paint);
+}
+try {
+  const s = localStorage.getItem('pnw-src'); if (s) $('src').value = s;
+  ['obakey','obabase','wsfkey','wsfbase'].forEach(id => {
+    const v = localStorage.getItem('pnw-'+id); if (v) $(id).value = v; });
+  const c = JSON.parse(localStorage.getItem('pnw-commute') || 'null'); if (c) ST.commute = c;
+} catch (e) {}
+sizeMap();
+load().then(pickCommuteDefaults);
+reschedule();
+</script>
+</body>
+</html>

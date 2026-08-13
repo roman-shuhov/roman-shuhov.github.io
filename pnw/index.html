@@ -19,7 +19,7 @@
   * { box-sizing:border-box; margin:0; padding:0; }
   html, body { height:100%; }
   body { background:var(--bg); color:var(--green); font-family:var(--mono); font-size:13px; line-height:1.5;
-    display:flex; flex-direction:column; overflow:hidden; }
+    display:flex; flex-direction:column; overflow:hidden; min-height:100vh; min-height:100dvh; }
   ::selection { background:var(--green); color:#031007; }
   .scanlines { position:fixed; inset:0; z-index:60; pointer-events:none;
     background:repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0, rgba(0,0,0,0) 2px, rgba(0,0,0,.14) 3px);
@@ -44,10 +44,10 @@
   input:focus, select:focus { outline:none; border-color:var(--green); }
   .lbl { color:var(--faint); font-size:11px; }
 
-  .top { flex:1.05; display:grid; grid-template-columns:minmax(0,1fr) 320px; min-height:0; }
+  .top { flex:1.05 1 0; display:grid; grid-template-columns:minmax(0,1fr) 320px; min-height:340px; }
   @media (max-width:1000px){ .top { grid-template-columns:1fr; } .side { display:none; } }
-  .mapwrap { position:relative; min-height:0; }
-  #map { display:block; width:100%; height:100%; cursor:grab; }
+  .mapwrap { position:relative; min-height:320px; overflow:hidden; }
+  #map { position:absolute; inset:0; display:block; width:100%; height:100%; cursor:grab; }
   #map:active { cursor:grabbing; }
   .mapctl { position:absolute; left:9px; top:9px; display:flex; flex-direction:column; gap:4px; z-index:5; }
   .attrib { position:absolute; right:7px; bottom:5px; font-size:9px; color:var(--faint); z-index:5;
@@ -67,7 +67,7 @@
   .note { color:var(--faint); font-size:10.5px; line-height:1.5; margin-top:6px; }
   .note code { color:var(--dim); }
 
-  .board { flex:1; border-top:1px solid var(--line); background:var(--panel); display:flex; flex-direction:column; min-height:0; }
+  .board { flex:1 1 0; min-height:220px; border-top:1px solid var(--line); background:var(--panel); display:flex; flex-direction:column; min-height:0; }
   .tabs { display:flex; gap:4px; padding:0 12px; background:var(--panel-2); border-bottom:1px solid var(--line); align-items:center; }
   .tabs button { background:none; border:none; border-bottom:2px solid transparent; color:var(--dim);
     font-family:var(--mono); font-size:11.5px; padding:9px 12px; cursor:pointer; }
@@ -145,6 +145,7 @@
         <select id="every"><option value="15">15s</option><option value="30" selected>30s</option>
           <option value="60">60s</option><option value="0">manual</option></select>
       </div>
+      <p class="note" id="srcnote2" style="display:none"></p>
       <p class="note" id="srcnote">Both agencies publish live positions. Link comes from OneBusAway,
         ferries from WSDOT's vessel feed — <code>Eta</code> and <code>LeftDock</code> are actual times, not estimates.
         WSDOT sends no CORS headers, so the ferry half needs a proxy; leave the key fields empty when one is set.</p>
@@ -205,7 +206,16 @@ const cv = $('map'), gx = cv.getContext('2d');
 let W = 900, H = 500;
 function sizeMap() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  W = cv.clientWidth || 900; H = cv.clientHeight || 500;
+  const box = cv.parentElement ? cv.parentElement.getBoundingClientRect() : null;
+  W = Math.round(cv.clientWidth || (box && box.width) || 900);
+  H = Math.round(cv.clientHeight || (box && box.height) || 500);
+  if (W < 40 || H < 40) {                       // layout has not settled yet — try again next frame
+    W = Math.max(W, 320); H = Math.max(H, 320);
+    if (typeof requestAnimationFrame === 'function' && !sizeMap.retry) {
+      sizeMap.retry = true;
+      requestAnimationFrame(() => { sizeMap.retry = false; sizeMap(); draw(); });
+    }
+  }
   cv.width = Math.floor(W*dpr); cv.height = Math.floor(H*dpr);
   gx.setTransform(dpr,0,0,dpr,0,0);
 }
@@ -220,13 +230,43 @@ function haversine(la1,lo1,la2,lo2){ const R=6371,d=x=>x*Math.PI/180;
 
 // one basemap: dark tiles pushed through a hue-rotate + saturate pass, so water reads blue,
 // land reads green, and the roads stay visible without competing with the transit lines
+// a couple of providers, because any one of them can be blocked by an extension,
+// a corporate resolver, or a bad afternoon at a CDN
+const PROVIDERS = [
+  { host:['a','b','c','d'], url:'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png',
+    attrib:'© OpenStreetMap contributors © CARTO' },
+  { host:['a','b','c'], url:'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attrib:'© OpenStreetMap contributors' },
+  { host:null, url:'https://tile.openstreetmap.de/{z}/{x}/{y}.png',
+    attrib:'© OpenStreetMap contributors' }
+];
+const TILES = { provider:0, tried:0, ok:0, failed:0, state:'loading' };
 const BASEMAP = {
-  url: 'https://basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png',
   tint: 'contrast(1.5) saturate(2.6) hue-rotate(150deg) brightness(0.9)',
   dark: true,
-  attrib: '© OpenStreetMap contributors © CARTO'
+  get attrib() {
+    const p = PROVIDERS[TILES.provider];
+    return TILES.state === 'blocked' ? 'basemap unreachable — transit data is unaffected' : p.attrib;
+  }
 };
 const style = () => BASEMAP;
+function tileUrl(z, x, y) {
+  const p = PROVIDERS[TILES.provider];
+  const sub = p.host ? p.host[(x + y) % p.host.length] : '';
+  return p.url.replace('{s}', sub).replace('{z}', z).replace('{x}', x).replace('{y}', y);
+}
+// if a provider keeps failing, move to the next one and start over
+function tileFailed() {
+  TILES.failed++;
+  if (TILES.failed >= 4 && TILES.ok === 0) {
+    if (TILES.provider < PROVIDERS.length - 1) {
+      TILES.provider++; TILES.failed = 0; tileCache.clear();
+      setTimeout(draw, 60);
+    } else {
+      TILES.state = 'blocked';
+    }
+  }
+}
 const tileCache = new Map();
 function drawTiles() {
   const tz = clamp(Math.round(view.z), 1, 16), scale = worldSize()/(TILE*Math.pow(2,tz));
@@ -234,19 +274,44 @@ function drawTiles() {
   const cx = c.x*n, cy = c.y*n, hw = W/2/(TILE*scale), hh = H/2/(TILE*scale);
   for (let ty = Math.max(0,Math.floor(cy-hh)); ty <= Math.min(n-1,Math.ceil(cy+hh)); ty++)
     for (let tx = Math.floor(cx-hw); tx <= Math.ceil(cx+hw); tx++) {
-      const wx = ((tx%n)+n)%n, k = tz+'/'+wx+'/'+ty;
+      const wx = ((tx%n)+n)%n, k = TILES.provider + '|' + tz + '/' + wx + '/' + ty;
       let img = tileCache.get(k);
-      if (!img) { img = new Image(); img.crossOrigin='anonymous'; img.onload = draw;
-        img.onerror = () => img.failed = true;
-        img.src = style().url.replace('{z}/{x}/{y}', k);
+      if (!img) {
+        img = new Image();
+        // no crossOrigin: we never read pixels back, and requesting CORS only adds a way to fail
+        img.referrerPolicy = 'no-referrer';
+        img.onload = () => { TILES.ok++; TILES.state = 'ok'; draw(); };
+        img.onerror = () => { img.failed = true; tileFailed(); };
+        img.src = tileUrl(tz, wx, ty);
+        TILES.tried++;
         tileCache.set(k, img);
-        if (tileCache.size > 300) tileCache.delete(tileCache.keys().next().value); }
+        if (tileCache.size > 300) tileCache.delete(tileCache.keys().next().value);
+      }
       if (!img.complete || img.failed) continue;
       if (style().tint) gx.filter = style().tint;
       gx.drawImage(img, (tx-cx)*TILE*scale + W/2, (ty-cy)*TILE*scale + H/2, TILE*scale+1, TILE*scale+1);
       gx.filter = 'none';
     }
+  // no basemap: draw a coastline-ish wash so the water still reads
+  if (TILES.state === 'blocked') {
+    gx.fillStyle = 'rgba(20,44,74,.55)';
+    gx.fillRect(0, 0, W, H);
+    gx.fillStyle = 'rgba(11,26,18,.85)';
+    for (const poly of LANDMASS) {
+      gx.beginPath();
+      poly.forEach((pt, i) => { const s = toScreen(pt[0], pt[1]); i ? gx.lineTo(s.x, s.y) : gx.moveTo(s.x, s.y); });
+      gx.closePath(); gx.fill();
+    }
+  }
 }
+// crude land outlines, only used when tiles cannot be fetched at all
+const LANDMASS = [
+  [[49.0,-122.75],[49.0,-121.0],[46.2,-121.0],[46.2,-122.55],[47.05,-122.55],[47.30,-122.42],
+   [47.52,-122.33],[47.62,-122.34],[47.72,-122.40],[48.05,-122.40],[48.42,-122.62],[48.80,-122.70]],
+  [[48.30,-123.15],[48.20,-122.65],[47.90,-122.55],[47.55,-122.65],[47.20,-122.95],[47.00,-123.20],
+   [47.40,-124.30],[48.30,-124.70]],
+  [[48.05,-122.55],[48.30,-122.40],[48.25,-122.62],[47.95,-122.60]]
+];
 function decodePolyline(str) {
   const out=[]; let i=0, lat=0, lon=0;
   while (i < str.length) {
@@ -388,8 +453,8 @@ const preview = t => {
 function viewportSpan() {
   const a = toLatLon(0,0), b = toLatLon(W,H);
   return { lat:((a.lat+b.lat)/2).toFixed(5), lon:((a.lon+b.lon)/2).toFixed(5),
-    latSpan: Math.min(1.4, Math.max(0.05, Math.abs(a.lat-b.lat))).toFixed(4),
-    lonSpan: Math.min(1.8, Math.max(0.05, Math.abs(a.lon-b.lon))).toFixed(4) };
+    latSpan: Math.min(0.5, Math.max(0.05, Math.abs(a.lat-b.lat))).toFixed(4),
+    lonSpan: Math.min(0.7, Math.max(0.05, Math.abs(a.lon-b.lon))).toFixed(4) };
 }
 function indexRefs(refs) {
   if (!refs) return;
@@ -513,18 +578,37 @@ async function load() {
         all.push(...(d.list || []));
         if (!ST.shapes.has(id)) loadShape(id);
       }
-    } else {
+    } else if (!ST.perRoute) {
       // one viewport call covers every line at once, instead of one call per route
       const v = viewportSpan();
-      const d = await obaGet('/trips-for-location.json',
-        { lat:v.lat, lon:v.lon, latSpan:v.latSpan, lonSpan:v.lonSpan, includeTrip:'true', includeStatus:'true' });
-      indexRefs(d.references);
-      const want = new Set(ids);
-      all = (d.list || []).filter(td => {
-        const t = ST.trips.get((td.status && td.status.activeTripId) || td.tripId);
-        return t && want.has(t.routeId);
-      });
+      let d = null;
+      try {
+        d = await obaGet('/trips-for-location.json',
+          { lat:v.lat, lon:v.lon, latSpan:v.latSpan, lonSpan:v.lonSpan, includeTrip:'true', includeStatus:'true' });
+      } catch (e) {
+        if (/rate limited|401/.test(e.message)) throw e;
+        ST.perRoute = true;                       // this server will not answer by area — ask per route
+      }
+      if (!ST.perRoute) {
+        indexRefs(d.references);
+        const want = new Set(ids);
+        all = (d.list || []).filter(td => {
+          const t = ST.trips.get((td.status && td.status.activeTripId) || td.tripId);
+          return t && want.has(t.routeId);
+        });
+        if (!all.length && (d.list || []).length === 0) ST.perRoute = true;   // nothing ever comes back
+      }
       for (const id of ids) if (!ST.shapes.has(id)) loadShape(id);
+    }
+    if (!demo && ST.perRoute) {
+      all = [];
+      for (const id of ids) {
+        const d = await obaGet('/trips-for-route/' + encodeURIComponent(id) + '.json',
+          { includeStatus:'true', includeSchedule:'false' });
+        indexRefs(d.references);
+        all.push(...(d.list || []));
+        if (!ST.shapes.has(id)) loadShape(id);
+      }
     }
     ST.trains = normaliseTrains(all);
     if (!demo) backoffClear();
@@ -1073,7 +1157,7 @@ function paint() {
   draw();
   $('p-mode').textContent = $('src').value === 'demo' ? 'demo data' : 'live APIs';
   $('p-mode').className = 'pill ' + ($('src').value === 'demo' ? 'demo' : 'live');
-  $('p-link').textContent = 'Link ' + ST.trains.length;
+  $('p-link').textContent = 'Link ' + ST.trains.length + (ST.perRoute ? ' ·' : '');
   $('p-ferry').textContent = 'ferries ' + ST.boats.length;
   const age = ST.lastFetch ? (Date.now()-ST.lastFetch)/1000 : null;
   const wait = backoffLeft();
@@ -1127,6 +1211,10 @@ function paint() {
     : '<span class="note">tap a train or a boat</span>';
 
   renderRoutes();
+  const n2 = $('srcnote2');
+  if (ST.perRoute) { n2.style.display = ''; n2.innerHTML =
+    'This OneBusAway server did not answer the by-area query, so Link is being fetched one route at a time — ' +
+    'a few more calls, same result.'; } else n2.style.display = 'none';
   if (ST.err) $('srcnote').innerHTML = '<span style="color:var(--red)">' + esc(ST.err) + '</span><br>' +
     'If that is a CORS block, point the base fields at a small proxy of your own and let it hold the keys.';
   renderBoard();
@@ -1420,6 +1508,11 @@ try {
   const c = JSON.parse(localStorage.getItem('pnw-commute') || 'null'); if (c) ST.commute = c;
 } catch (e) {}
 sizeMap();
+draw();                                          // paint the map before any network call returns
+if (typeof ResizeObserver === 'function') {
+  new ResizeObserver(() => { sizeMap(); draw(); }).observe(cv.parentElement || cv);
+}
+addEventListener('load', () => { sizeMap(); draw(); });
 load().then(pickCommuteDefaults);
 reschedule();
 </script>

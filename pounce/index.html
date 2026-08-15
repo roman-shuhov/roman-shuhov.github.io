@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>POUNCE — a game for cats</title>
+<meta name="description" content="Put the tablet on the floor and let the cat hunt. Bugs, mice and fish crawl the screen; every catch pops.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23120a18'/%3E%3Cellipse cx='16' cy='18' rx='7' ry='5' fill='%23ffcf4d'/%3E%3Ccircle cx='13' cy='16' r='1.4' fill='%23120a18'/%3E%3Ccircle cx='19' cy='16' r='1.4' fill='%23120a18'/%3E%3Cpath d='M10 12l2 3M22 12l-2 3' stroke='%23ffcf4d' stroke-width='2'/%3E%3C/svg%3E">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; overflow:hidden; background:#0d0713; }
+  body {
+    font-family: ui-rounded, 'SF Pro Rounded', 'Nunito', system-ui, sans-serif;
+    color:#fff; touch-action:none; user-select:none; -webkit-user-select:none;
+    overscroll-behavior:none;
+  }
+  #game { position:fixed; inset:0; display:block; touch-action:none; }
+
+  /* ---------- chrome, deliberately small so paws do not hit it ---------- */
+  .hud {
+    position:fixed; top:env(safe-area-inset-top, 8px); left:0; right:0;
+    display:flex; align-items:center; gap:10px; padding:8px 12px;
+    pointer-events:none; z-index:5; font-size:15px; font-weight:800;
+  }
+  .hud .score {
+    background:rgba(0,0,0,.35); border-radius:999px; padding:5px 13px;
+    display:flex; align-items:center; gap:7px; backdrop-filter:blur(6px);
+  }
+  .hud .score .n { font-variant-numeric:tabular-nums; }
+  .hud .sp { flex:1; }
+  .tap {
+    pointer-events:auto; background:rgba(0,0,0,.35); border:none; color:#fff;
+    width:38px; height:38px; border-radius:999px; font-size:17px; cursor:pointer;
+    backdrop-filter:blur(6px);
+  }
+  .tap:active { background:rgba(255,255,255,.2); }
+
+  /* ---------- panels ---------- */
+  .veil {
+    position:fixed; inset:0; z-index:10; display:none; align-items:center; justify-content:center;
+    background:rgba(8,4,14,.9); backdrop-filter:blur(10px); padding:20px;
+  }
+  .veil.on { display:flex; }
+  .card {
+    width:min(560px, 94vw); max-height:88vh; overflow-y:auto;
+    background:#170d20; border:1px solid #33204a; border-radius:22px; padding:22px;
+  }
+  .card h1 { font-size:26px; margin-bottom:4px; letter-spacing:-.02em; }
+  .card h2 { font-size:12px; letter-spacing:.18em; text-transform:uppercase; color:#8a7aa0; margin:18px 0 9px; }
+  .card p { color:#b6a8c9; font-size:14px; line-height:1.55; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .btn {
+    background:#241634; border:1px solid #3c2857; color:#fff; border-radius:14px;
+    padding:11px 16px; font-size:14px; font-weight:700; cursor:pointer; font-family:inherit;
+  }
+  .btn:active { transform:translateY(1px); }
+  .btn.on { background:#5a2ea6; border-color:#7a44d8; }
+  .btn.big { flex:1; padding:16px; font-size:17px; background:#6d2fbf; border-color:#8b4fe0; }
+  .cats { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px; margin-top:10px; }
+  .cat {
+    background:#20142d; border:1px solid #35224c; border-radius:16px; padding:12px;
+    text-align:center; cursor:pointer;
+  }
+  .cat.on { border-color:#8b4fe0; background:#2e1a47; }
+  .cat .em { font-size:26px; }
+  .cat .nm { font-weight:800; margin-top:3px; font-size:14px; }
+  .cat .sc { color:#9d8cb5; font-size:12px; font-variant-numeric:tabular-nums; }
+  .cat input {
+    width:100%; background:#150d1e; border:1px solid #35224c; color:#fff; border-radius:9px;
+    padding:5px 7px; font-family:inherit; font-size:13px; text-align:center; margin-top:5px;
+  }
+  .cat input:focus { outline:none; border-color:#8b4fe0; }
+  .swatch { display:flex; gap:6px; justify-content:center; margin-top:6px; }
+  .swatch b { width:15px; height:15px; border-radius:999px; display:block; cursor:pointer; border:2px solid transparent; }
+  .swatch b.on { border-color:#fff; }
+  .note { color:#7d6d93; font-size:12px; line-height:1.5; margin-top:9px; }
+  .maker { display:grid; grid-template-columns:120px 1fr; gap:14px; align-items:start;
+    background:#1d1229; border:1px solid #35224c; border-radius:16px; padding:14px; }
+  @media (max-width:430px){ .maker { grid-template-columns:1fr; justify-items:center; } }
+  #avatar { width:120px; height:120px; border-radius:22px; background:#150d1e; display:block; }
+  .maker input { width:100%; background:#150d1e; border:1px solid #35224c; color:#fff; border-radius:10px;
+    padding:9px 11px; font-family:inherit; font-size:16px; font-weight:700; }
+  .maker input:focus { outline:none; border-color:#8b4fe0; }
+  .maker .sub { color:#7d6d93; font-size:11px; letter-spacing:.12em; text-transform:uppercase; margin:11px 0 5px; }
+  .picker { display:flex; gap:6px; flex-wrap:wrap; margin-top:9px; }
+  .picker button { background:#150d1e; border:2px solid transparent; border-radius:12px;
+    width:38px; height:38px; font-size:20px; cursor:pointer; padding:0; line-height:1; }
+  .picker button.on { border-color:#8b4fe0; background:#2e1a47; }
+  .picker button.sw { width:26px; height:26px; border-radius:999px; }
+  .empty { color:#8a7aa0; font-size:13px; padding:14px; text-align:center;
+    border:1px dashed #35224c; border-radius:16px; }
+  .lock {
+    position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom, 10px) + 10px); transform:translateX(-50%);
+    z-index:6; background:rgba(0,0,0,.4); border-radius:999px; padding:7px 15px; font-size:12px;
+    color:#c9bad9; pointer-events:auto; border:none; font-family:inherit; font-weight:700; backdrop-filter:blur(6px);
+  }
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<div class="hud" id="hud">
+  <div class="score"><span id="who"></span><span id="name" style="font-weight:700"></span><span class="n" id="score">0</span></div>
+  <div class="sp"></div>
+  <button class="tap" id="menu">☰</button>
+</div>
+<button class="lock" id="lockbtn">paw lock: off</button>
+
+<div class="veil on" id="veil">
+  <div class="card">
+    <h1>Pounce 🐾</h1>
+    <p>Lay the tablet flat and let them hunt. Every catch pops, buzzes and counts.</p>
+
+    <h2>your cat</h2>
+    <div class="maker">
+      <canvas id="avatar" width="240" height="240"></canvas>
+      <div>
+        <input type="text" id="c-name" maxlength="16" placeholder="what are they called?">
+        <p class="sub">coat</p>
+        <div class="picker" id="c-coat"></div>
+        <p class="sub">markings</p>
+        <div class="picker" id="c-pat"></div>
+        <p class="sub">eyes</p>
+        <div class="picker" id="c-eyes"></div>
+        <p class="sub">ears &amp; fur</p>
+        <div class="picker" id="c-build"></div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn" id="c-random">🎲 surprise me</button>
+        </div>
+      </div>
+    </div>
+
+    <h2>prey</h2>
+    <div class="row" id="preybtns"></div>
+
+    <h2>how lively</h2>
+    <div class="row" id="paceb"></div>
+
+    <h2>sound &amp; feel</h2>
+    <div class="row">
+      <button class="btn on" id="b-sound">🔊 sound</button>
+      <button class="btn on" id="b-haptic">📳 vibration</button>
+      <button class="btn on" id="b-trail">✨ trails</button>
+    </div>
+
+    <div class="row" style="margin-top:18px">
+      <button class="btn big" id="start">start hunting</button>
+    </div>
+    <p class="note">Tap ☰ to come back. <b>Paw lock</b> hides the buttons so a paw cannot open the menu —
+      hold the bottom pill for two seconds to unlock. Sound needs one tap to start, which the button covers.</p>
+    <p class="note" id="scoreboard"></p>
+  </div>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const rnd = (a, b) => a + Math.random() * (b - a);
+const pick = a => a[(Math.random() * a.length) | 0];
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const TAU = Math.PI * 2;
+
+/* ============================================================
+   state
+   ============================================================ */
+const COATS = [
+  { id:'ginger', name:'ginger', fur:['#c4651f','#e08a3c','#f3b168'], belly:'#fbe3c4' },
+  { id:'grey',   name:'grey',   fur:['#4e5763','#6d7784','#9aa3ae'], belly:'#dfe3e8' },
+  { id:'black',  name:'black',  fur:['#1e1a24','#2f2836','#453b4e'], belly:'#5b4f66' },
+  { id:'cream',  name:'cream',  fur:['#c9ab84','#e4cba7','#f4e2c8'], belly:'#fff6e8' },
+  { id:'brown',  name:'brown',  fur:['#5b3a24','#7d5233','#a5734b'], belly:'#dcc0a0' },
+  { id:'white',  name:'white',  fur:['#c8c2cc','#e6e2ea','#f9f7fb'], belly:'#ffffff' },
+  { id:'blue',   name:'blue',   fur:['#4a5f77','#6b829c','#96abc2'], belly:'#dce6f0' }
+];
+const PATTERNS = [
+  { id:'solid',  name:'solid'   },
+  { id:'tabby',  name:'tabby'   },
+  { id:'tuxedo', name:'tuxedo'  },
+  { id:'calico', name:'calico'  },
+  { id:'point',  name:'siamese' },
+  { id:'spots',  name:'spotted' }
+];
+const EYES = [
+  { id:'green',  col:'#7ad86a' }, { id:'gold', col:'#ffc247' }, { id:'blue', col:'#6fb6ff' },
+  { id:'copper', col:'#e08a3c' }, { id:'odd',  col:'#7ad86a', col2:'#6fb6ff' }
+];
+const EARS = [ { id:'pointy', name:'pointy' }, { id:'round', name:'round' }, { id:'folded', name:'folded' } ];
+const FURLEN = [ { id:'short', name:'short' }, { id:'fluffy', name:'fluffy' } ];
+const CAT_DEFAULT = () => ({ name:'', coat:'ginger', pattern:'tabby', eyes:'green', ears:'pointy', fur:'short', score:0 });
+
+const S = {
+  cat: CAT_DEFAULT(),
+  prey: { bug:true, mouse:true, fish:false, dot:true, feather:false, rabbit:true, squirrel:true },
+  pace: 1,
+  sound: true, haptic: true, trail: true,
+  lock: false,
+  running: false
+};
+try {
+  const saved = JSON.parse(localStorage.getItem('pounce') || 'null');
+  if (saved) {
+    if (saved.cat) S.cat = Object.assign(CAT_DEFAULT(), saved.cat);
+    else if (Array.isArray(saved.cats) && saved.cats.length) {      // carry a score over from the old build
+      S.cat = Object.assign(CAT_DEFAULT(), { name: saved.cats[0].name || '', score: saved.cats[0].score || 0 });
+    }
+    if (saved.prey) S.prey = Object.assign(S.prey, saved.prey);
+    ['pace','sound','haptic','trail'].forEach(k => { if (saved[k] !== undefined) S[k] = saved[k]; });
+  }
+} catch (e) {}
+const coatOf = () => COATS.find(c => c.id === S.cat.coat) || COATS[0];
+const eyesOf = () => EYES.find(e => e.id === S.cat.eyes) || EYES[0];
+const save = () => { try { localStorage.setItem('pounce', JSON.stringify(S)); } catch (e) {} };
+
+/* ============================================================
+   canvas
+   ============================================================ */
+const cv = $('game'), g = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = Math.floor(W * DPR); cv.height = Math.floor(H * DPR);
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  g.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+addEventListener('resize', resize);
+addEventListener('orientationchange', () => setTimeout(resize, 200));
+
+/* ============================================================
+   sound — synthesised, so there is nothing to download
+   ============================================================ */
+let AC = null;
+function audio() {
+  if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+  if (AC && AC.state === 'suspended') AC.resume();
+  return AC;
+}
+// the "pop": a fast pitch drop through a bandpass, which is what a bubble sounds like
+function pop(pitch) {
+  if (!S.sound) return;
+  const a = audio(); if (!a) return;
+  const t = a.currentTime;
+  const o = a.createOscillator(), gn = a.createGain(), f = a.createBiquadFilter();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(900 * pitch, t);
+  o.frequency.exponentialRampToValueAtTime(180 * pitch, t + 0.09);
+  f.type = 'bandpass'; f.frequency.value = 1100 * pitch; f.Q.value = 3;
+  gn.gain.setValueAtTime(0.0001, t);
+  gn.gain.exponentialRampToValueAtTime(0.5, t + 0.008);
+  gn.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+  o.connect(f); f.connect(gn); gn.connect(a.destination);
+  o.start(t); o.stop(t + 0.16);
+  // a little click of "burst" noise on top
+  const n = a.createBufferSource(), nb = a.createBuffer(1, 1200, a.sampleRate), d = nb.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+  nb.getChannelData(0).set(d);
+  const ng = a.createGain();
+  ng.gain.setValueAtTime(0.22, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+  n.buffer = nb; n.connect(ng); ng.connect(a.destination); n.start(t);
+}
+function chirp() {                                   // small reward every ten catches
+  if (!S.sound) return;
+  const a = audio(); if (!a) return;
+  const t = a.currentTime;
+  [0, 0.09, 0.18].forEach((dt, i) => {
+    const o = a.createOscillator(), gn = a.createGain();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime([660, 880, 1320][i], t + dt);
+    gn.gain.setValueAtTime(0.0001, t + dt);
+    gn.gain.exponentialRampToValueAtTime(0.3, t + dt + 0.01);
+    gn.gain.exponentialRampToValueAtTime(0.0001, t + dt + 0.13);
+    o.connect(gn); gn.connect(a.destination);
+    o.start(t + dt); o.stop(t + dt + 0.15);
+  });
+}
+function buzz(ms) {
+  if (!S.haptic) return;
+  try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {}
+}
+
+/* ============================================================
+   critters
+   ============================================================ */
+const KINDS = {
+  bug:      { label:'🐞 bug',      size:17, speed:1.00, legs:true,  wander:1.5,  dart:0.010, col:'#ff6b6b' },
+  mouse:    { label:'🐭 mouse',    size:22, speed:1.30, legs:false, wander:0.7,  dart:0.016, col:'#cfc3d8' },
+  fish:     { label:'🐟 fish',     size:23, speed:0.85, legs:false, wander:0.45, dart:0.004, col:'#7ee0c0' },
+  dot:      { label:'🔴 laser',    size:12, speed:1.85, legs:false, wander:2.4,  dart:0.030, col:'#ff3b5c' },
+  feather:  { label:'🪶 feather',  size:26, speed:0.60, legs:false, wander:0.9,  dart:0.002, col:'#ffe9a8' },
+  // the big ones — they hop and scurry instead of gliding, and they are worth chasing
+  rabbit:   { label:'🐇 rabbit',   size:46, speed:1.05, legs:false, wander:0.5,  dart:0.022, col:'#cbb79c', hop:true,
+              coat:['#8d7a63','#b9a488','#dcccb4'], belly:'#f2e8d8', inner:'#e2a0ad', eye:'#2b1d18' },
+  squirrel: { label:'🐿 squirrel', size:42, speed:1.45, legs:false, wander:1.1,  dart:0.030, col:'#a8672f', scurry:true,
+              coat:['#7b451f','#a4652d','#c98a4b'], belly:'#efe0cb', inner:'#d79a63', eye:'#20140e' }
+};
+let critters = [], bursts = [], sparks = [], ripples = [];
+let combo = 0, comboAt = 0;
+
+function activeKinds() {
+  const k = Object.keys(S.prey).filter(x => S.prey[x]);
+  return k.length ? k : ['bug'];
+}
+function spawn(kind, x, y) {
+  kind = kind || pick(activeKinds());
+  const K = KINDS[kind];
+  const edge = (Math.random() * 4) | 0;
+  const c = {
+    kind, K,
+    x: x !== undefined ? x : (edge === 0 ? -30 : edge === 1 ? W + 30 : rnd(0, W)),
+    y: y !== undefined ? y : (edge === 2 ? -30 : edge === 3 ? H + 30 : rnd(0, H)),
+    a: rnd(0, TAU),
+    v: K.speed * rnd(55, 105) * S.pace,
+    size: K.size * rnd(0.85, 1.2),
+    phase: rnd(0, 10),
+    rest: 0,
+    life: 0,
+    wig: rnd(0.8, 1.4)
+  };
+  critters.push(c);
+  return c;
+}
+function population() {
+  return Math.round(clamp(Math.min(W, H) / 150, 3, 7) * (0.7 + S.pace * 0.5));
+}
+
+function burst(x, y, col, size) {
+  bursts.push({ x, y, r: size * 0.5, max: size * 3.6, col, t: 0 });
+  ripples.push({ x, y, r: size, max: size * 7, t: 0 });
+  const n = 14 + (Math.random() * 10 | 0);
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * TAU + rnd(-0.2, 0.2), sp = rnd(90, 340);
+    sparks.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+      r: rnd(2, 6), col, t: 0, life: rnd(0.4, 0.9) });
+  }
+}
+
+/* ============================================================
+   hits
+   ============================================================ */
+function hitAt(px, py) {
+  let best = null, bd = Infinity;
+  for (const c of critters) {
+    const d = Math.hypot(c.x - px, c.y - py);
+    const reach = c.size * 1.9 + 26;               // generous — paws are not precise
+    if (d < reach && d < bd) { bd = d; best = c; }
+  }
+  if (!best) { ripples.push({ x:px, y:py, r:8, max:70, t:0, miss:true }); return false; }
+
+  const cat = S.cat;
+  cat.score++;
+  const now = performance.now();
+  combo = (now - comboAt < 1600) ? combo + 1 : 1;
+  comboAt = now;
+
+  burst(best.x, best.y, best.K.col, best.size * (best.size > 35 ? 0.8 : 1));
+  pop(clamp(1 + (combo - 1) * 0.12, 1, 2.2));
+  buzz(combo > 3 ? [12, 26, 12] : 24);
+  if (cat.score % 10 === 0) { chirp(); buzz([14, 40, 14, 40, 20]); }
+
+  critters = critters.filter(c => c !== best);
+  setTimeout(() => { if (S.running) spawn(); }, rnd(250, 900));
+  $('score').textContent = cat.score;
+  save();
+  return true;
+}
+
+/* ============================================================
+   drawing
+   ============================================================ */
+// ---- shared fur helpers -------------------------------------------------
+// a soft two-tone body: darker along the back, lighter underneath
+function furBody(cx, cy, rx, ry, rot, coat, belly) {
+  const gr = g.createLinearGradient(0, cy - ry, 0, cy + ry);
+  gr.addColorStop(0, coat[0]);
+  gr.addColorStop(0.45, coat[1]);
+  gr.addColorStop(0.8, coat[2]);
+  gr.addColorStop(1, belly);
+  g.fillStyle = gr;
+  g.beginPath(); g.ellipse(cx, cy, rx, ry, rot || 0, 0, TAU); g.fill();
+}
+// short strokes along the silhouette, which is what reads as fur at small sizes
+function furEdge(cx, cy, rx, ry, n, len, col, seed) {
+  g.strokeStyle = col; g.lineWidth = Math.max(0.7, len * 0.3); g.lineCap = 'round';
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * TAU + seed;
+    const x = cx + Math.cos(a) * rx, y = cy + Math.sin(a) * ry;
+    const jitter = 0.6 + ((Math.sin(seed * 31 + i * 7.3) + 1) / 2) * 0.8;
+    g.beginPath();
+    g.moveTo(x, y);
+    g.lineTo(x + Math.cos(a + 0.35) * len * jitter, y + Math.sin(a + 0.35) * len * jitter);
+    g.stroke();
+  }
+}
+function eye(x, y, r, col) {
+  g.fillStyle = col;
+  g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
+  g.fillStyle = 'rgba(255,255,255,.9)';                       // catchlight, the thing that makes it look alive
+  g.beginPath(); g.arc(x + r * 0.35, y - r * 0.35, r * 0.34, 0, TAU); g.fill();
+}
+function whiskers(x, y, len, dir, col) {
+  g.strokeStyle = col; g.lineWidth = Math.max(0.6, len * 0.045); g.lineCap = 'round';
+  [-0.3, 0, 0.3].forEach(a => {
+    g.beginPath();
+    g.moveTo(x, y);
+    g.quadraticCurveTo(x + dir * len * 0.6, y + a * len * 0.5, x + dir * len, y + a * len * 1.15);
+    g.stroke();
+  });
+}
+
+function drawRabbit(c, t, s) {
+  const K = c.K;
+  const hop = Math.max(0, Math.sin(t * 5.5 * c.wig + c.phase));   // 0 grounded, 1 top of the bound
+  const lift = hop * s * 0.26;
+  const stretch = 1 + hop * 0.16, squash = 1 - hop * 0.10;
+  g.save(); g.translate(0, -lift);
+
+  // shadow on the ground, shrinking as it rises
+  g.fillStyle = 'rgba(0,0,0,' + (0.3 - hop * 0.18).toFixed(2) + ')';
+  g.beginPath(); g.ellipse(-s*0.05, lift + s*0.42, s*0.42 * (1 - hop*0.25), s*0.1, 0, 0, TAU); g.fill();
+
+  // hind leg behind the body, the big powerful one
+  g.fillStyle = K.coat[0];
+  g.save(); g.translate(-s*0.22, s*0.12); g.rotate(-0.35 + hop * 0.7);
+  g.beginPath(); g.ellipse(0, 0, s*0.26, s*0.17, 0, 0, TAU); g.fill();
+  g.restore();
+  g.strokeStyle = K.coat[0]; g.lineWidth = Math.max(2, s*0.075); g.lineCap = 'round';
+  const tuck = hop * s * 0.2;
+  g.beginPath();
+  g.moveTo(-s*0.3, s*0.2); g.lineTo(-s*0.42, s*0.4 - tuck); g.stroke();
+
+  // cotton tail
+  g.fillStyle = '#fbf4e8';
+  g.beginPath(); g.arc(-s*0.5, s*0.02, s*0.14, 0, TAU); g.fill();
+  furEdge(-s*0.5, s*0.02, s*0.14, s*0.14, 12, s*0.06, 'rgba(255,255,255,.8)', c.phase);
+
+  // body
+  furBody(-s*0.08, 0, s*0.44 * stretch, s*0.33 * squash, -0.06, K.coat, K.belly);
+  furEdge(-s*0.08, 0, s*0.44 * stretch, s*0.33 * squash, 26, s*0.075, 'rgba(0,0,0,.16)', c.phase);
+
+  // front leg
+  g.strokeStyle = K.coat[1]; g.lineWidth = Math.max(2, s*0.07);
+  g.beginPath();
+  g.moveTo(s*0.2, s*0.2); g.lineTo(s*0.26, s*0.38 - tuck*0.7); g.stroke();
+
+  // head, angled up a little the way a rabbit carries it
+  g.save(); g.translate(s*0.38, -s*0.1); g.rotate(-0.12 - hop*0.1);
+  const hgr = g.createLinearGradient(0, -s*0.22, 0, s*0.22);
+  hgr.addColorStop(0, K.coat[0]); hgr.addColorStop(0.6, K.coat[2]); hgr.addColorStop(1, K.belly);
+  g.fillStyle = hgr;
+  g.beginPath(); g.ellipse(0, 0, s*0.25, s*0.21, 0, 0, TAU); g.fill();
+  g.beginPath(); g.ellipse(s*0.16, s*0.05, s*0.13, s*0.11, 0.2, 0, TAU); g.fill();   // muzzle
+  furEdge(0, 0, s*0.25, s*0.21, 16, s*0.055, 'rgba(0,0,0,.14)', c.phase + 2);
+
+  // ears: long, one tilted, pink inside, laid back on the hop
+  [-1, 1].forEach((k, i) => {
+    g.save();
+    g.translate(-s*0.02 + k*s*0.06, -s*0.14);
+    g.rotate(k * 0.26 - 0.1 + hop * 0.35 + (i ? 0.08 : -0.05));
+    g.fillStyle = K.coat[1];
+    g.beginPath(); g.ellipse(0, -s*0.3, s*0.085, s*0.33, 0, 0, TAU); g.fill();
+    g.fillStyle = K.inner;
+    g.beginPath(); g.ellipse(0, -s*0.3, s*0.042, s*0.24, 0, 0, TAU); g.fill();
+    g.restore();
+  });
+
+  eye(s*0.06, -s*0.04, s*0.062, K.eye);
+  g.fillStyle = '#b98090';                                          // nose
+  g.beginPath(); g.ellipse(s*0.27, s*0.02, s*0.035, s*0.028, 0, 0, TAU); g.fill();
+  whiskers(s*0.27, s*0.04, s*0.3, 1, 'rgba(255,255,255,.55)');
+  g.restore();
+  g.restore();
+}
+
+function drawSquirrel(c, t, s) {
+  const K = c.K;
+  const bob = Math.sin(t * 9 * c.wig + c.phase);
+  const gait = Math.max(0, bob);
+  g.save(); g.translate(0, -gait * s * 0.12);
+
+  g.fillStyle = 'rgba(0,0,0,' + (0.28 - gait * 0.12).toFixed(2) + ')';
+  g.beginPath(); g.ellipse(0, s*0.4, s*0.4, s*0.09, 0, 0, TAU); g.fill();
+
+  // the tail: a big S-curve that arcs up over the back, drawn in two tones
+  g.save(); g.translate(-s*0.36, s*0.05); g.rotate(bob * 0.16);
+  const tg = g.createLinearGradient(-s*0.7, -s*0.7, 0, s*0.2);
+  tg.addColorStop(0, K.coat[2]); tg.addColorStop(0.55, K.coat[1]); tg.addColorStop(1, K.coat[0]);
+  g.fillStyle = tg;
+  g.beginPath();
+  g.moveTo(0, s*0.14);
+  g.bezierCurveTo(-s*0.78, s*0.2, -s*0.92, -s*0.5, -s*0.5, -s*0.85);
+  g.bezierCurveTo(-s*0.2, -s*1.05, s*0.04, -s*0.78, -s*0.06, -s*0.6);
+  g.bezierCurveTo(-s*0.16, -s*0.72, -s*0.42, -s*0.66, -s*0.44, -s*0.42);
+  g.bezierCurveTo(-s*0.46, -s*0.18, -s*0.24, -s*0.02, 0, s*0.14);
+  g.closePath(); g.fill();
+  // fluff along the outer edge of the tail
+  g.strokeStyle = 'rgba(255,240,220,.5)'; g.lineWidth = Math.max(0.8, s*0.035); g.lineCap = 'round';
+  for (let i = 0; i < 14; i++) {
+    const u = i / 13, ang = -2.4 + u * 2.6, rx = s*0.62, ry = s*0.62;
+    const x = -s*0.42 + Math.cos(ang) * rx, y = -s*0.42 + Math.sin(ang) * ry;
+    g.beginPath(); g.moveTo(x, y);
+    g.lineTo(x + Math.cos(ang) * s*0.1, y + Math.sin(ang) * s*0.1);
+    g.stroke();
+  }
+  g.restore();
+
+  // haunch, then body arched the way a squirrel sits
+  g.fillStyle = K.coat[0];
+  g.beginPath(); g.ellipse(-s*0.18, s*0.08, s*0.24, s*0.21, 0.2, 0, TAU); g.fill();
+  furBody(-s*0.02, 0, s*0.38, s*0.28, -0.14, K.coat, K.belly);
+  furEdge(-s*0.02, 0, s*0.38, s*0.28, 24, s*0.07, 'rgba(0,0,0,.18)', c.phase + 1);
+
+  // legs, alternating
+  g.strokeStyle = K.coat[0]; g.lineWidth = Math.max(2, s*0.075); g.lineCap = 'round';
+  g.beginPath();
+  g.moveTo(-s*0.16, s*0.22); g.lineTo(-s*0.24, s*0.4 + bob*s*0.07);
+  g.moveTo(s*0.14, s*0.2);   g.lineTo(s*0.2,  s*0.38 - bob*s*0.07);
+  g.stroke();
+
+  // head
+  g.save(); g.translate(s*0.32, -s*0.14); g.rotate(-0.1);
+  const hg = g.createLinearGradient(0, -s*0.2, 0, s*0.2);
+  hg.addColorStop(0, K.coat[0]); hg.addColorStop(0.6, K.coat[2]); hg.addColorStop(1, K.belly);
+  g.fillStyle = hg;
+  g.beginPath(); g.ellipse(0, 0, s*0.21, s*0.19, 0, 0, TAU); g.fill();
+  g.beginPath(); g.ellipse(s*0.15, s*0.04, s*0.1, s*0.085, 0.15, 0, TAU); g.fill();   // muzzle
+  furEdge(0, 0, s*0.21, s*0.19, 14, s*0.05, 'rgba(0,0,0,.15)', c.phase + 3);
+
+  // rounded ears with the little tuft
+  [-1, 1].forEach(k => {
+    g.save(); g.translate(-s*0.02, -s*0.13 + k*s*0.03); g.rotate(k*0.25 - 0.1);
+    g.fillStyle = K.coat[0];
+    g.beginPath(); g.ellipse(0, -s*0.12, s*0.075, s*0.1, 0, 0, TAU); g.fill();
+    g.fillStyle = K.inner;
+    g.beginPath(); g.ellipse(0, -s*0.11, s*0.038, s*0.055, 0, 0, TAU); g.fill();
+    g.strokeStyle = K.coat[2]; g.lineWidth = Math.max(0.8, s*0.028);
+    g.beginPath(); g.moveTo(0, -s*0.2); g.lineTo(k*s*0.03, -s*0.28); g.stroke();
+    g.restore();
+  });
+
+  eye(s*0.05, -s*0.03, s*0.058, K.eye);
+  g.fillStyle = '#3a2419';
+  g.beginPath(); g.ellipse(s*0.23, s*0.02, s*0.03, s*0.025, 0, 0, TAU); g.fill();
+  whiskers(s*0.23, s*0.04, s*0.28, 1, 'rgba(255,255,255,.5)');
+  g.restore();
+  g.restore();
+}
+
+function drawBug(c, t) {
+  const wig = Math.sin(t * 9 * c.wig + c.phase) * 0.35;
+  g.save(); g.translate(c.x, c.y); g.rotate(c.a + wig);
+  const s = c.size;
+  if (c.K.legs) {                                  // six legs, alternating gait
+    g.strokeStyle = 'rgba(20,10,26,.9)'; g.lineWidth = Math.max(1.6, s * 0.11);
+    g.lineCap = 'round';
+    for (let i = -1; i <= 1; i++) {
+      const sw = Math.sin(t * 14 * c.wig + i * 2.1 + c.phase) * s * 0.32;
+      g.beginPath();
+      g.moveTo(i * s * 0.28, 0); g.lineTo(i * s * 0.28 + sw, s * 0.75);
+      g.moveTo(i * s * 0.28, 0); g.lineTo(i * s * 0.28 - sw, -s * 0.75);
+      g.stroke();
+    }
+    g.beginPath();                                 // antennae
+    g.moveTo(s * 0.5, 0); g.lineTo(s * 0.95, s * 0.32);
+    g.moveTo(s * 0.5, 0); g.lineTo(s * 0.95, -s * 0.32);
+    g.stroke();
+  }
+  if (c.kind === 'rabbit') {
+    drawRabbit(c, t, s);
+  } else if (c.kind === 'squirrel') {
+    drawSquirrel(c, t, s);
+  } else if (c.kind === 'fish') {
+    const tail = Math.sin(t * 8 + c.phase) * 0.5;
+    g.fillStyle = c.K.col;
+    g.beginPath(); g.ellipse(0, 0, s * 0.62, s * 0.4, 0, 0, TAU); g.fill();
+    g.beginPath();
+    g.moveTo(-s * 0.55, 0);
+    g.lineTo(-s * 1.05, -s * 0.42 + tail * s * 0.2);
+    g.lineTo(-s * 1.05, s * 0.42 + tail * s * 0.2);
+    g.closePath(); g.fill();
+    g.fillStyle = '#0d0713';
+    g.beginPath(); g.arc(s * 0.3, -s * 0.08, s * 0.09, 0, TAU); g.fill();
+  } else if (c.kind === 'feather') {
+    g.strokeStyle = c.K.col; g.lineWidth = Math.max(1.4, s * 0.08); g.lineCap = 'round';
+    g.beginPath(); g.moveTo(-s * 0.7, 0); g.lineTo(s * 0.7, 0); g.stroke();
+    for (let i = -5; i <= 5; i++) {
+      const f = 1 - Math.abs(i) / 6;
+      const sway = Math.sin(t * 5 + i * 0.5 + c.phase) * s * 0.08;
+      g.beginPath();
+      g.moveTo(i * s * 0.12, 0);
+      g.lineTo(i * s * 0.12 - s * 0.12, -s * 0.45 * f + sway);
+      g.moveTo(i * s * 0.12, 0);
+      g.lineTo(i * s * 0.12 - s * 0.12, s * 0.45 * f + sway);
+      g.stroke();
+    }
+  } else if (c.kind === 'dot') {
+    const pulse = 1 + Math.sin(t * 18 + c.phase) * 0.12;
+    const gr = g.createRadialGradient(0, 0, 0, 0, 0, s * 2.4 * pulse);
+    gr.addColorStop(0, 'rgba(255,90,120,.95)');
+    gr.addColorStop(0.35, 'rgba(255,40,80,.5)');
+    gr.addColorStop(1, 'rgba(255,0,60,0)');
+    g.fillStyle = gr;
+    g.beginPath(); g.arc(0, 0, s * 2.4 * pulse, 0, TAU); g.fill();
+    g.fillStyle = '#fff';
+    g.beginPath(); g.arc(0, 0, s * 0.42, 0, TAU); g.fill();
+  } else {
+    // bug / mouse body
+    g.fillStyle = c.K.col;
+    g.beginPath(); g.ellipse(-s * 0.12, 0, s * 0.55, s * 0.42, 0, 0, TAU); g.fill();
+    g.fillStyle = c.kind === 'mouse' ? '#e8dcf0' : '#2a1030';
+    g.beginPath(); g.arc(s * 0.42, 0, s * 0.3, 0, TAU); g.fill();
+    if (c.kind === 'bug') {
+      g.strokeStyle = 'rgba(30,12,36,.8)'; g.lineWidth = Math.max(1, s * 0.07);
+      g.beginPath(); g.moveTo(-s * 0.6, 0); g.lineTo(s * 0.3, 0); g.stroke();
+      g.fillStyle = 'rgba(30,12,36,.85)';
+      [[-0.35, 0.18], [-0.1, -0.2], [-0.45, -0.16], [0, 0.22]].forEach(([dx, dy]) => {
+        g.beginPath(); g.arc(dx * s, dy * s, s * 0.09, 0, TAU); g.fill(); });
+    }
+    if (c.kind === 'mouse') {
+      g.fillStyle = '#ffb4d0';                     // ears
+      g.beginPath(); g.arc(s * 0.34, -s * 0.3, s * 0.19, 0, TAU); g.fill();
+      g.beginPath(); g.arc(s * 0.34, s * 0.3, s * 0.19, 0, TAU); g.fill();
+      g.strokeStyle = c.K.col; g.lineWidth = Math.max(1.4, s * 0.09); g.lineCap = 'round';
+      const tw = Math.sin(t * 7 + c.phase) * s * 0.4;
+      g.beginPath();
+      g.moveTo(-s * 0.62, 0);
+      g.quadraticCurveTo(-s * 1.1, tw, -s * 1.4, tw * 0.6);
+      g.stroke();
+      g.fillStyle = '#0d0713';
+      g.beginPath(); g.arc(s * 0.5, -s * 0.1, s * 0.07, 0, TAU); g.fill();
+    }
+  }
+  g.restore();
+}
+
+let last = performance.now();
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const t = now / 1000;
+
+  // background: slow drifting glow, so a static screen still has motion
+  g.fillStyle = '#0d0713';
+  g.fillRect(0, 0, W, H);
+  const gr = g.createRadialGradient(
+    W * 0.5 + Math.sin(t * 0.12) * W * 0.2, H * 0.5 + Math.cos(t * 0.1) * H * 0.2, 0,
+    W * 0.5, H * 0.5, Math.max(W, H) * 0.75);
+  gr.addColorStop(0, 'rgba(72,32,110,.5)');
+  gr.addColorStop(1, 'rgba(13,7,19,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, W, H);
+
+  if (S.running) {
+    while (critters.length < population()) spawn();
+    for (const c of critters) {
+      c.life += dt;
+      if (c.rest > 0) { c.rest -= dt; }
+      else {
+        c.a += rnd(-1, 1) * c.K.wander * dt * 2.2;
+        if (Math.random() < c.K.dart) c.v = c.K.speed * rnd(180, 340) * S.pace;   // sudden dash
+        c.v += (c.K.speed * 80 * S.pace - c.v) * dt * 0.7;
+        let step = c.v;
+        // rabbits surge on each hop and coast between; squirrels move in quick bursts
+        if (c.K.hop) step *= 0.45 + Math.max(0, Math.sin(t * 5.5 * c.wig + c.phase)) * 1.5;
+        if (c.K.scurry) step *= 0.5 + (Math.sin(t * 9 * c.wig + c.phase) > 0.2 ? 1.5 : 0.2);
+        c.x += Math.cos(c.a) * step * dt;
+        c.y += Math.sin(c.a) * step * dt;
+        // big prey stop and sit up more often, which is exactly when a cat commits
+        const freeze = c.K.hop || c.K.scurry ? 0.010 : 0.004;
+        if (Math.random() < freeze) c.rest = rnd(0.4, 1.6);
+      }
+      const m = c.size * 2;
+      if (c.x < -m) c.x = W + m; if (c.x > W + m) c.x = -m;
+      if (c.y < -m) c.y = H + m; if (c.y > H + m) c.y = -m;
+      if (S.trail && c.kind === 'dot') {
+        sparks.push({ x:c.x, y:c.y, vx:0, vy:0, r:c.size*0.3, col:c.K.col, t:0, life:0.35, soft:true });
+      }
+    }
+  }
+
+  // ripples
+  ripples = ripples.filter(r => { r.t += dt; return r.t < 0.6; });
+  for (const r of ripples) {
+    const f = r.t / 0.6;
+    g.strokeStyle = (r.miss ? 'rgba(255,255,255,' : 'rgba(255,220,255,') + (1 - f) * 0.5 + ')';
+    g.lineWidth = 3 * (1 - f) + 0.5;
+    g.beginPath(); g.arc(r.x, r.y, r.r + (r.max - r.r) * f, 0, TAU); g.stroke();
+  }
+
+  for (const c of critters) drawBug(c, t);
+
+  // bursts
+  bursts = bursts.filter(b => { b.t += dt; return b.t < 0.36; });
+  for (const b of bursts) {
+    const f = b.t / 0.36;
+    g.fillStyle = b.col;
+    g.globalAlpha = (1 - f) * 0.85;
+    g.beginPath(); g.arc(b.x, b.y, b.r + (b.max - b.r) * f, 0, TAU); g.fill();
+    g.globalAlpha = 1;
+  }
+  // sparks
+  sparks = sparks.filter(s => { s.t += dt; return s.t < s.life; });
+  for (const s of sparks) {
+    const f = s.t / s.life;
+    s.x += s.vx * dt; s.y += s.vy * dt;
+    s.vx *= 0.94; s.vy = s.vy * 0.94 + (s.soft ? 0 : 260 * dt);
+    g.globalAlpha = (1 - f) * (s.soft ? 0.5 : 1);
+    g.fillStyle = s.col;
+    g.beginPath(); g.arc(s.x, s.y, s.r * (1 - f * 0.6), 0, TAU); g.fill();
+    g.globalAlpha = 1;
+  }
+
+  // combo, drawn on the canvas so it cannot be tapped
+  if (combo > 2 && performance.now() - comboAt < 1400) {
+    const f = (performance.now() - comboAt) / 1400;
+    g.globalAlpha = (1 - f) * 0.9;
+    g.fillStyle = coatOf().fur[2];
+    g.font = '800 ' + Math.round(Math.min(W, H) * 0.09) + 'px ui-rounded, system-ui, sans-serif';
+    g.textAlign = 'center';
+    g.fillText('×' + combo, W / 2, H * 0.5 - f * 40);
+    g.globalAlpha = 1; g.textAlign = 'left';
+  }
+}
+
+/* ============================================================
+   input — every touch point counts, so a whole paw can score
+   ============================================================ */
+function pointer(e) {
+  if (!S.running) return;
+  e.preventDefault();
+  const list = e.changedTouches ? Array.from(e.changedTouches) : [e];
+  for (const p of list) hitAt(p.clientX, p.clientY);
+}
+cv.addEventListener('touchstart', pointer, { passive:false });
+cv.addEventListener('touchmove', e => {
+  if (!S.running) return;
+  e.preventDefault();
+  for (const p of Array.from(e.changedTouches)) {          // a dragging paw can still catch
+    for (const c of critters) {
+      if (Math.hypot(c.x - p.clientX, c.y - p.clientY) < c.size * 1.4) { hitAt(p.clientX, p.clientY); break; }
+    }
+  }
+}, { passive:false });
+cv.addEventListener('mousedown', pointer);
+
+/* ============================================================
+   ui
+   ============================================================ */
+/* ============================================================
+   the cat constructor — a drawn portrait, not an emoji
+   ============================================================ */
+const av = $('avatar'), ag = av.getContext('2d');
+
+function drawCatFace(ctx, size, cat) {
+  const coat = COATS.find(c => c.id === cat.coat) || COATS[0];
+  const eyeSpec = EYES.find(e => e.id === cat.eyes) || EYES[0];
+  const fluffy = cat.fur === 'fluffy';
+  const s = size;
+  ctx.clearRect(0, 0, s, s);
+  ctx.save();
+  ctx.translate(s / 2, s / 2 + s * 0.03);
+  const R = s * 0.30;
+
+  const white = ['tuxedo', 'calico'].includes(cat.pattern);
+  const pointed = cat.pattern === 'point';
+  const headFur = pointed ? ['#e8ddcc', '#f2ead9', '#fbf5ea'] : coat.fur;
+
+  // ruff for long-haired cats
+  if (fluffy) {
+    ctx.fillStyle = coat.fur[2];
+    for (let i = 0; i < 26; i++) {
+      const a = (i / 26) * TAU;
+      ctx.beginPath();
+      ctx.ellipse(Math.cos(a) * R * 1.02, Math.sin(a) * R * 1.02 + R * 0.1,
+        R * 0.2, R * 0.11, a, 0, TAU);
+      ctx.fill();
+    }
+  }
+
+  // ears
+  const earDraw = (k) => {
+    ctx.save();
+    ctx.translate(k * R * 0.72, -R * 0.62);
+    ctx.rotate(k * (cat.ears === 'folded' ? 0.9 : 0.25));
+    ctx.fillStyle = headFur[0];
+    ctx.beginPath();
+    if (cat.ears === 'round') {
+      ctx.ellipse(0, -R * 0.2, R * 0.32, R * 0.3, 0, 0, TAU);
+    } else if (cat.ears === 'folded') {
+      ctx.moveTo(-R * 0.3, R * 0.1); ctx.quadraticCurveTo(-R * 0.1, -R * 0.42, R * 0.32, -R * 0.05);
+      ctx.quadraticCurveTo(R * 0.1, R * 0.2, -R * 0.3, R * 0.1);
+    } else {
+      ctx.moveTo(-R * 0.34, R * 0.24); ctx.lineTo(0, -R * 0.56); ctx.lineTo(R * 0.34, R * 0.16);
+      ctx.closePath();
+    }
+    ctx.fill();
+    ctx.fillStyle = '#e2a0ad';                         // inner ear
+    ctx.beginPath();
+    if (cat.ears === 'round') ctx.ellipse(0, -R * 0.18, R * 0.17, R * 0.16, 0, 0, TAU);
+    else if (cat.ears === 'folded') { ctx.moveTo(-R*0.16, R*0.06); ctx.quadraticCurveTo(-R*0.02, -R*0.22, R*0.16, -R*0.02);
+      ctx.quadraticCurveTo(R*0.02, R*0.12, -R*0.16, R*0.06); }
+    else { ctx.moveTo(-R*0.18, R*0.14); ctx.lineTo(0, -R*0.34); ctx.lineTo(R*0.18, R*0.1); ctx.closePath(); }
+    ctx.fill();
+    ctx.restore();
+  };
+  earDraw(-1); earDraw(1);
+
+  // head
+  const gr = ctx.createLinearGradient(0, -R, 0, R);
+  gr.addColorStop(0, headFur[0]); gr.addColorStop(0.55, headFur[1]); gr.addColorStop(1, headFur[2]);
+  ctx.fillStyle = gr;
+  ctx.beginPath(); ctx.ellipse(0, 0, R * 1.02, R * 0.95, 0, 0, TAU); ctx.fill();
+
+  // markings
+  ctx.save();
+  ctx.beginPath(); ctx.ellipse(0, 0, R * 1.02, R * 0.95, 0, 0, TAU); ctx.clip();
+  if (cat.pattern === 'tabby') {
+    ctx.strokeStyle = 'rgba(0,0,0,.26)'; ctx.lineWidth = R * 0.1; ctx.lineCap = 'round';
+    for (let i = -2; i <= 2; i++) {                    // forehead M
+      ctx.beginPath();
+      ctx.moveTo(i * R * 0.2, -R * 0.9);
+      ctx.quadraticCurveTo(i * R * 0.24, -R * 0.55, i * R * 0.14, -R * 0.32);
+      ctx.stroke();
+    }
+    [-1, 1].forEach(k => {                             // cheek stripes
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.moveTo(k * R * 0.7, -R * 0.1 + i * R * 0.24);
+        ctx.lineTo(k * R * 1.1, -R * 0.02 + i * R * 0.24);
+        ctx.stroke();
+      }
+    });
+  } else if (cat.pattern === 'tuxedo') {
+    ctx.fillStyle = '#fbf7f2';
+    ctx.beginPath(); ctx.ellipse(0, R * 0.45, R * 0.55, R * 0.6, 0, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0, -R * 0.35, R * 0.2, R * 0.45, 0, 0, TAU); ctx.fill();
+  } else if (cat.pattern === 'calico') {
+    ctx.fillStyle = '#fbf7f2';
+    ctx.beginPath(); ctx.ellipse(-R * 0.1, R * 0.5, R * 0.6, R * 0.55, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(40,28,20,.75)';
+    ctx.beginPath(); ctx.ellipse(-R * 0.62, -R * 0.4, R * 0.38, R * 0.42, 0.3, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(214,126,44,.8)';
+    ctx.beginPath(); ctx.ellipse(R * 0.55, -R * 0.3, R * 0.4, R * 0.44, -0.2, 0, TAU); ctx.fill();
+  } else if (cat.pattern === 'point') {
+    ctx.fillStyle = 'rgba(70,52,44,.55)';
+    ctx.beginPath(); ctx.ellipse(0, R * 0.5, R * 0.62, R * 0.55, 0, 0, TAU); ctx.fill();
+  } else if (cat.pattern === 'spots') {
+    ctx.fillStyle = 'rgba(0,0,0,.24)';
+    [[-0.55,-0.3,0.16],[0.5,-0.42,0.13],[-0.35,0.35,0.12],[0.62,0.2,0.14],[0.05,-0.62,0.11],[-0.68,0.1,0.1]]
+      .forEach(([x,y,r]) => { ctx.beginPath(); ctx.arc(x*R, y*R, r*R, 0, TAU); ctx.fill(); });
+  }
+  ctx.restore();
+
+  // fur texture around the edge
+  ctx.strokeStyle = 'rgba(0,0,0,.13)';
+  ctx.lineWidth = Math.max(0.8, R * (fluffy ? 0.07 : 0.045));
+  ctx.lineCap = 'round';
+  const n = fluffy ? 40 : 26;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * TAU;
+    const x = Math.cos(a) * R * 1.02, y = Math.sin(a) * R * 0.95;
+    const len = R * (fluffy ? 0.2 : 0.1) * (0.6 + ((Math.sin(i * 5.7) + 1) / 2) * 0.8);
+    ctx.beginPath(); ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len); ctx.stroke();
+  }
+
+  // eyes
+  const ex = R * 0.42, ey = -R * 0.06, er = R * 0.26;
+  [-1, 1].forEach((k, i) => {
+    ctx.fillStyle = '#fffdf8';
+    ctx.beginPath(); ctx.ellipse(k * ex, ey, er, er * 0.92, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = (eyeSpec.id === 'odd' && k === 1) ? eyeSpec.col2 : eyeSpec.col;
+    ctx.beginPath(); ctx.arc(k * ex, ey, er * 0.78, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#140d18';                        // slit pupil
+    ctx.beginPath(); ctx.ellipse(k * ex, ey, er * 0.2, er * 0.68, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.92)';
+    ctx.beginPath(); ctx.arc(k * ex + er * 0.28, ey - er * 0.34, er * 0.2, 0, TAU); ctx.fill();
+  });
+
+  // muzzle, nose, mouth
+  ctx.fillStyle = white || pointed ? '#fbf7f2' : headFur[2];
+  ctx.beginPath(); ctx.ellipse(-R * 0.2, R * 0.46, R * 0.26, R * 0.2, 0, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(R * 0.2, R * 0.46, R * 0.26, R * 0.2, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#e08a9a';
+  ctx.beginPath();
+  ctx.moveTo(-R * 0.13, R * 0.28); ctx.lineTo(R * 0.13, R * 0.28); ctx.lineTo(0, R * 0.44);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(30,20,34,.6)'; ctx.lineWidth = R * 0.05; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(0, R * 0.44); ctx.lineTo(0, R * 0.56);
+  ctx.moveTo(0, R * 0.56); ctx.quadraticCurveTo(-R * 0.16, R * 0.68, -R * 0.28, R * 0.52);
+  ctx.moveTo(0, R * 0.56); ctx.quadraticCurveTo(R * 0.16, R * 0.68, R * 0.28, R * 0.52);
+  ctx.stroke();
+
+  // whiskers
+  ctx.strokeStyle = 'rgba(255,255,255,.72)'; ctx.lineWidth = R * 0.03;
+  [-1, 1].forEach(k => {
+    [-0.12, 0.04, 0.2].forEach((dy, i) => {
+      ctx.beginPath();
+      ctx.moveTo(k * R * 0.36, R * 0.44 + dy * R);
+      ctx.quadraticCurveTo(k * R * 0.9, R * 0.36 + dy * R * 1.4, k * R * 1.35, R * 0.3 + dy * R * 1.9);
+      ctx.stroke();
+    });
+  });
+  ctx.restore();
+}
+
+function paintAvatar() {
+  drawCatFace(ag, av.width, S.cat);
+}
+function chip(list, key, cur) {
+  return list.map(o =>
+    '<button class="' + (o.id === cur ? 'on' : '') + '" data-k="' + key + '" data-v="' + o.id + '" ' +
+    'style="width:auto;padding:0 11px;font-size:12px;font-weight:700;color:#fff">' +
+    (o.name || o.id) + '</button>').join('');
+}
+function renderMaker() {
+  $('c-name').value = S.cat.name;
+  $('c-coat').innerHTML = COATS.map(c =>
+    '<button class="sw ' + (c.id === S.cat.coat ? 'on' : '') + '" data-k="coat" data-v="' + c.id + '" ' +
+    'style="background:linear-gradient(140deg,' + c.fur[0] + ',' + c.fur[2] + ')" title="' + c.name + '"></button>').join('');
+  $('c-pat').innerHTML = chip(PATTERNS, 'pattern', S.cat.pattern);
+  $('c-eyes').innerHTML = EYES.map(e =>
+    '<button class="sw ' + (e.id === S.cat.eyes ? 'on' : '') + '" data-k="eyes" data-v="' + e.id + '" ' +
+    'style="background:' + (e.col2 ? 'linear-gradient(90deg,' + e.col + ' 50%,' + e.col2 + ' 50%)' : e.col) + '"></button>').join('');
+  $('c-build').innerHTML = chip(EARS, 'ears', S.cat.ears) + chip(FURLEN, 'fur', S.cat.fur);
+  ['c-coat','c-pat','c-eyes','c-build'].forEach(id =>
+    $(id).querySelectorAll('[data-k]').forEach(b => b.addEventListener('click', () => {
+      S.cat[b.dataset.k] = b.dataset.v; save(); renderMaker(); syncHud();
+    })));
+  paintAvatar();
+  $('scoreboard').innerHTML = S.cat.score
+    ? '<b>' + esc(S.cat.name || 'Your cat') + '</b> has caught <b>' + S.cat.score + '</b> so far — ' +
+      '<span id="reset" style="text-decoration:underline;cursor:pointer">reset</span>'
+    : 'Everything here is saved on this device.';
+  const r = $('reset');
+  if (r) r.addEventListener('click', () => { S.cat.score = 0; save(); renderMaker(); syncHud(); });
+}
+const esc = t => String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+$('c-name').addEventListener('input', () => {
+  S.cat.name = $('c-name').value.slice(0, 16); save(); syncHud();
+  const r = $('scoreboard');
+  if (S.cat.score) r.innerHTML = '<b>' + esc(S.cat.name || 'Your cat') + '</b> has caught <b>' + S.cat.score + '</b> so far';
+});
+$('c-random').addEventListener('click', () => {
+  S.cat.coat = pick(COATS).id; S.cat.pattern = pick(PATTERNS).id;
+  S.cat.eyes = pick(EYES).id; S.cat.ears = pick(EARS).id; S.cat.fur = pick(FURLEN).id;
+  save(); renderMaker(); syncHud();
+});
+
+function renderPrey() {
+  $('preybtns').innerHTML = Object.keys(KINDS).map(k =>
+    '<button class="btn' + (S.prey[k] ? ' on' : '') + '" data-p="' + k + '">' + KINDS[k].label + '</button>').join('');
+  $('preybtns').querySelectorAll('[data-p]').forEach(b => b.addEventListener('click', () => {
+    S.prey[b.dataset.p] = !S.prey[b.dataset.p];
+    if (!Object.values(S.prey).some(Boolean)) S.prey[b.dataset.p] = true;
+    save(); renderPrey(); critters = [];
+  }));
+}
+function renderPace() {
+  const opts = [['sleepy', 0.6], ['normal', 1], ['zoomies', 1.7]];
+  $('paceb').innerHTML = opts.map(([n, v]) =>
+    '<button class="btn' + (S.pace === v ? ' on' : '') + '" data-v="' + v + '">' + n + '</button>').join('');
+  $('paceb').querySelectorAll('[data-v]').forEach(b => b.addEventListener('click', () => {
+    S.pace = +b.dataset.v; save(); renderPace();
+    for (const c of critters) c.v = c.K.speed * rnd(55, 105) * S.pace;
+  }));
+}
+// the hud badge is the cat's own face, drawn small
+const badge = document.createElement('canvas');
+badge.width = badge.height = 64;
+const bg = badge.getContext('2d');
+function syncHud() {
+  drawCatFace(bg, 64, S.cat);
+  $('who').innerHTML = '';
+  $('who').appendChild(badge);
+  badge.style.width = badge.style.height = '26px';
+  badge.style.display = 'block';
+  $('score').textContent = S.cat.score;
+  $('score').style.color = coatOf().fur[2];
+  $('name').textContent = S.cat.name || '';
+}
+function toggle(id, key) {
+  $(id).addEventListener('click', () => {
+    S[key] = !S[key];
+    $(id).classList.toggle('on', S[key]);
+    save();
+    if (key === 'sound' && S.sound) { audio(); pop(1.4); }
+    if (key === 'haptic' && S.haptic) buzz(30);
+  });
+}
+toggle('b-sound', 'sound'); toggle('b-haptic', 'haptic'); toggle('b-trail', 'trail');
+
+$('start').addEventListener('click', () => {
+  audio();                                    // the tap that unlocks WebAudio
+  $('veil').classList.remove('on');
+  S.running = true;
+  critters = [];
+  syncHud();
+  if (document.documentElement.requestFullscreen)
+    document.documentElement.requestFullscreen().catch(() => {});
+  try { if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {}); } catch (e) {}
+});
+$('menu').addEventListener('click', () => {
+  S.running = false;
+  renderMaker(); renderPrey(); renderPace();
+  $('veil').classList.add('on');
+});
+
+/* paw lock: hide the chrome, and require a long press to bring it back */
+let holdT = null;
+function setLock(on) {
+  S.lock = on;
+  $('hud').style.opacity = on ? '0' : '1';
+  $('menu').style.pointerEvents = on ? 'none' : 'auto';
+  $('lockbtn').textContent = on ? 'hold to unlock 🔒' : 'paw lock: off';
+  $('lockbtn').style.opacity = on ? '.35' : '1';
+}
+$('lockbtn').addEventListener('click', e => { if (!S.lock) setLock(true); });
+['touchstart','mousedown'].forEach(ev => $('lockbtn').addEventListener(ev, () => {
+  if (!S.lock) return;
+  holdT = setTimeout(() => setLock(false), 2000);
+}));
+['touchend','mouseup','touchcancel','mouseleave'].forEach(ev => $('lockbtn').addEventListener(ev, () => {
+  clearTimeout(holdT);
+}));
+
+/* keep it awake while a cat is playing */
+let wake = null;
+async function keepAwake() {
+  try { if ('wakeLock' in navigator) wake = await navigator.wakeLock.request('screen'); } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && S.running) keepAwake();
+});
+$('start').addEventListener('click', keepAwake);
+
+resize();
+renderMaker(); renderPrey(); renderPace(); syncHud();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

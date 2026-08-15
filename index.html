@@ -334,6 +334,12 @@
         <p>Sankey diagram studio for income statements. Ledger-line syntax in, publication-ready flow charts out.</p>
         <span class="badge online">online</span>
       </a>
+      <a class="card" href="/pounce/" rel="noopener">
+        <h3>pounce</h3>
+        <p>A game for cats. Lay the tablet on the floor and something scuttles across it — every catch pops,
+          buzzes and counts, with a scoreboard per cat.</p>
+        <span class="badge online">playable</span>
+      </a>
       <a class="card" href="/colony/" rel="noopener">
         <h3>colony</h3>
         <p>An idle game with no clicking. Your termites are dumb — you write their instincts, top-down,
@@ -353,6 +359,7 @@
     <p class="row">trace&nbsp;&nbsp;→ <a href="/trace/">termit.dev/trace</a></p>
     <p class="row">tls&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ <a href="/handshake/">termit.dev/handshake</a></p>
     <p class="row">pnw&nbsp;&nbsp;&nbsp;&nbsp;→ <a href="/pnw/">termit.dev/pnw</a></p>
+    <p class="row">pounce→ <a href="/pounce/">termit.dev/pounce</a></p>
   </section>
 
   <footer>
@@ -554,6 +561,7 @@ const COMMANDS = {
     addLine('  <span class="bright">trace</span>       see what a capture was actually doing');
     addLine('  <span class="bright">tls</span>         learn how https works, from the maths up');
     addLine('  <span class="bright">pnw</span>         light rail and ferries, live, with delays');
+    addLine('  <span class="bright">pounce</span>      hand the tablet to a cat');
     addLine('  <span class="bright">github</span>      the code lives here');
     addLine('  <span class="bright">uname</span> -a    system info');
     addLine('  <span class="bright">matrix</span>      toggle the rain');
@@ -561,10 +569,15 @@ const COMMANDS = {
     addLine('  <span class="dim">…and a few that aren\u2019t listed. rabbit holes exist.</span>');
   },
   ls() {
-    addLine('<span class="bright">diagram/</span>  <span class="bright">colony/</span>  <span class="bright">wire/</span>  <span class="bright">probe/</span>  <span class="bright">trace/</span>  <span class="bright">handshake/</span>  <span class="bright">pnw/</span>');
+    addLine('<span class="bright">diagram/</span>  <span class="bright">colony/</span>  <span class="bright">wire/</span>  <span class="bright">probe/</span>  <span class="bright">trace/</span>  <span class="bright">handshake/</span>  <span class="bright">pnw/</span>  <span class="bright">pounce/</span>');
   },
   chart() {
     addLine('→ <a href="https://chart.termit.dev" rel="noopener">https://chart.termit.dev</a> <span class="dim">// sankey diagram studio</span>');
+  },
+  async pounce() {
+    await typeLine('<span class="dim">releasing the bugs…</span>', 22);
+    addLine('→ <a href="/pounce/">termit.dev/pounce</a> <span class="dim">// best played with claws</span>');
+    setTimeout(() => { location.href = '/pounce/'; }, 1200);
   },
   async pnw() {
     await typeLine('<span class="dim">checking the boards…</span>', 22);
@@ -653,7 +666,8 @@ const ALIASES = { 'll': 'ls', 'ls projects': 'ls', 'open chart': 'chart', 'diagr
                   'tcpdump': 'probe', 'pcap': 'probe', 'wireshark': 'probe', 'packet': 'probe',
                   'flows': 'trace', 'syn': 'trace',
                   'handshake': 'tls', 'ssl': 'tls', 'https': 'tls', 'rsa': 'tls', 'openssl': 'tls',
-                  'transit': 'pnw', 'sound': 'pnw', 'link': 'pnw', 'ferry': 'pnw', 'wsf': 'pnw' };
+                  'transit': 'pnw', 'sound': 'pnw', 'link': 'pnw', 'ferry': 'pnw', 'wsf': 'pnw',
+                  'cat': 'pounce', 'cats': 'pounce', 'meow': 'pounce' };
 
 function esc(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

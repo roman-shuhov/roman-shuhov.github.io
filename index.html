@@ -334,6 +334,18 @@
         <p>Sankey diagram studio for income statements. Ledger-line syntax in, publication-ready flow charts out.</p>
         <span class="badge online">online</span>
       </a>
+      <a class="card" href="/itinerary/" rel="noopener">
+        <h3>itinerary</h3>
+        <p>Lay a trip out on a timeline. Flights, check-ins, museums, dinners — drag them around, catch the
+          overlaps, export to your calendar.</p>
+        <span class="badge online">online</span>
+      </a>
+      <a class="card" href="/lists/" rel="noopener">
+        <h3>lists</h3>
+        <p>Checklists that never leave the browser. Groceries, packing, trips — drag to reorder, cross things
+          out, keep them visible or let them disappear.</p>
+        <span class="badge online">online</span>
+      </a>
       <a class="card" href="/pounce/" rel="noopener">
         <h3>pounce</h3>
         <p>A game for cats. Lay the tablet on the floor and something scuttles across it — every catch pops,
@@ -360,6 +372,8 @@
     <p class="row">tls&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ <a href="/handshake/">termit.dev/handshake</a></p>
     <p class="row">pnw&nbsp;&nbsp;&nbsp;&nbsp;→ <a href="/pnw/">termit.dev/pnw</a></p>
     <p class="row">pounce→ <a href="/pounce/">termit.dev/pounce</a></p>
+    <p class="row">lists&nbsp;&nbsp;→ <a href="/lists/">termit.dev/lists</a></p>
+    <p class="row">trip&nbsp;&nbsp;&nbsp;→ <a href="/itinerary/">termit.dev/itinerary</a></p>
   </section>
 
   <footer>
@@ -562,6 +576,8 @@ const COMMANDS = {
     addLine('  <span class="bright">tls</span>         learn how https works, from the maths up');
     addLine('  <span class="bright">pnw</span>         light rail and ferries, live, with delays');
     addLine('  <span class="bright">pounce</span>      hand the tablet to a cat');
+    addLine('  <span class="bright">lists</span>       checklists, stored nowhere but here');
+    addLine('  <span class="bright">trip</span>        put a journey on a timeline');
     addLine('  <span class="bright">github</span>      the code lives here');
     addLine('  <span class="bright">uname</span> -a    system info');
     addLine('  <span class="bright">matrix</span>      toggle the rain');
@@ -569,10 +585,20 @@ const COMMANDS = {
     addLine('  <span class="dim">…and a few that aren\u2019t listed. rabbit holes exist.</span>');
   },
   ls() {
-    addLine('<span class="bright">diagram/</span>  <span class="bright">colony/</span>  <span class="bright">wire/</span>  <span class="bright">probe/</span>  <span class="bright">trace/</span>  <span class="bright">handshake/</span>  <span class="bright">pnw/</span>  <span class="bright">pounce/</span>');
+    addLine('<span class="bright">diagram/</span>  <span class="bright">colony/</span>  <span class="bright">wire/</span>  <span class="bright">probe/</span>  <span class="bright">trace/</span>  <span class="bright">handshake/</span>  <span class="bright">pnw/</span>  <span class="bright">pounce/</span>  <span class="bright">lists/</span>  <span class="bright">itinerary/</span>');
   },
   chart() {
     addLine('→ <a href="https://chart.termit.dev" rel="noopener">https://chart.termit.dev</a> <span class="dim">// sankey diagram studio</span>');
+  },
+  async trip() {
+    await typeLine('<span class="dim">unfolding the map…</span>', 22);
+    addLine('→ <a href="/itinerary/">termit.dev/itinerary</a> <span class="dim">// the layover is the plan</span>');
+    setTimeout(() => { location.href = '/itinerary/'; }, 1200);
+  },
+  async lists() {
+    await typeLine('<span class="dim">unfolding the paper…</span>', 22);
+    addLine('→ <a href="/lists/">termit.dev/lists</a> <span class="dim">// you already forgot the milk</span>');
+    setTimeout(() => { location.href = '/lists/'; }, 1200);
   },
   async pounce() {
     await typeLine('<span class="dim">releasing the bugs…</span>', 22);
@@ -667,7 +693,9 @@ const ALIASES = { 'll': 'ls', 'ls projects': 'ls', 'open chart': 'chart', 'diagr
                   'flows': 'trace', 'syn': 'trace',
                   'handshake': 'tls', 'ssl': 'tls', 'https': 'tls', 'rsa': 'tls', 'openssl': 'tls',
                   'transit': 'pnw', 'sound': 'pnw', 'link': 'pnw', 'ferry': 'pnw', 'wsf': 'pnw',
-                  'cat': 'pounce', 'cats': 'pounce', 'meow': 'pounce' };
+                  'cat': 'pounce', 'cats': 'pounce', 'meow': 'pounce',
+                  'todo': 'lists', 'checklist': 'lists', 'list': 'lists', 'shopping': 'lists',
+                  'itinerary': 'trip', 'travel': 'trip', 'plan': 'trip' };
 
 function esc(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

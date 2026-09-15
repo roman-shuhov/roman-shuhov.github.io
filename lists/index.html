@@ -1,0 +1,1071 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Lists — checklists that stay on your device</title>
+<meta name="description" content="Grocery lists, packing lists, trip checklists. Nothing leaves the browser.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2314181c'/%3E%3Cpath d='M8 11l3 3 6-6' stroke='%234ade80' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M8 22l3 3 6-6' stroke='%23475569' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#0f1216; --panel:#161b21; --panel-2:#1b2129; --line:#262e38;
+    --ink:#e8edf3; --dim:#93a1b1; --faint:#5d6b7c;
+    --green:#4ade80; --blue:#60a5fa; --amber:#fbbf24; --red:#f87171; --violet:#a78bfa;
+    --font:'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; }
+  body {
+    background:var(--bg); color:var(--ink); font-family:var(--font); font-size:15px; line-height:1.5;
+    display:flex; flex-direction:column; overflow:hidden;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  button, input, textarea, select { font-family:inherit; font-size:inherit; color:inherit; }
+
+  header {
+    display:flex; align-items:center; gap:10px; padding:12px 16px;
+    padding-top:calc(12px + env(safe-area-inset-top)); border-bottom:1px solid var(--line);
+    background:var(--panel); flex:none;
+  }
+  .brand { font-weight:700; font-size:17px; letter-spacing:-.01em; display:flex; align-items:center; gap:8px; }
+  .brand svg { display:block; }
+  header .sp { flex:1; }
+  .chip { font-size:12px; color:var(--faint); }
+
+  .btn {
+    background:var(--panel-2); border:1px solid var(--line); color:var(--ink);
+    border-radius:9px; padding:7px 12px; cursor:pointer; font-size:13.5px; font-weight:500;
+    display:inline-flex; align-items:center; gap:6px; white-space:nowrap;
+  }
+  .btn:hover { border-color:#33404e; background:#212a33; }
+  .btn:active { transform:translateY(1px); }
+  .btn.on { border-color:var(--green); color:var(--green); background:rgba(74,222,128,.1); }
+  .btn.icon { padding:7px 9px; }
+  .btn.ghost { background:none; border-color:transparent; color:var(--dim); }
+  .btn.ghost:hover { background:var(--panel-2); color:var(--ink); }
+  .btn.danger:hover { border-color:var(--red); color:var(--red); }
+
+  .wrap { flex:1; display:grid; grid-template-columns:264px minmax(0,1fr); min-height:0; }
+  @media (max-width:820px) {
+    .wrap { grid-template-columns:1fr; }
+    .side { position:fixed; inset:0; z-index:30; transform:translateX(-100%); transition:transform .18s ease; }
+    .side.open { transform:none; }
+    .side-veil { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:29; display:none; }
+    .side-veil.open { display:block; }
+  }
+  @media (min-width:821px) { #hamburger { display:none; } }
+
+  .side {
+    border-right:1px solid var(--line); background:var(--panel); display:flex; flex-direction:column; min-height:0;
+  }
+  .side h2 {
+    font-size:11px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--faint);
+    padding:14px 16px 8px;
+  }
+  .lists { flex:1; overflow-y:auto; padding:0 8px 8px; }
+  .lrow {
+    display:flex; align-items:center; gap:9px; padding:9px 10px; border-radius:9px; cursor:pointer;
+    margin-bottom:2px;
+  }
+  .lrow:hover { background:var(--panel-2); }
+  .lrow.on { background:#212b36; }
+  .lrow .ic { font-size:16px; width:20px; text-align:center; flex:none; }
+  .lrow .nm { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; }
+  .lrow .ct { font-size:12px; color:var(--faint); font-variant-numeric:tabular-nums; }
+  .lrow.on .ct { color:var(--dim); }
+  .side .foot { padding:10px; border-top:1px solid var(--line); display:flex; gap:6px; flex-wrap:wrap; }
+
+  main { display:flex; flex-direction:column; min-height:0; }
+  .tbar {
+    display:flex; align-items:center; gap:8px; padding:12px 16px; border-bottom:1px solid var(--line);
+    flex:none; flex-wrap:wrap;
+  }
+  .title { font-size:19px; font-weight:700; letter-spacing:-.01em; border:none; background:none;
+    padding:2px 4px; border-radius:6px; min-width:60px; max-width:min(46vw, 380px); }
+  .title:focus { outline:none; background:var(--panel-2); }
+  .tbar .sp { flex:1; }
+  .prog { display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--dim); }
+  .bar { width:88px; height:6px; background:var(--panel-2); border-radius:99px; overflow:hidden; }
+  .bar i { display:block; height:100%; background:var(--green); border-radius:99px; transition:width .25s ease; }
+
+  .addbar { display:flex; gap:8px; padding:12px 16px; border-bottom:1px solid var(--line); flex:none; }
+  .addbar input {
+    flex:1; background:var(--panel-2); border:1px solid var(--line); border-radius:10px;
+    padding:11px 13px; outline:none;
+  }
+  .addbar input:focus { border-color:#3d4a5a; }
+  .addbar input::placeholder { color:var(--faint); }
+
+  .sugg { display:flex; gap:6px; padding:0 16px 10px; overflow-x:auto; flex:none; }
+  .sugg:empty { display:none; }
+  .sugg button {
+    background:none; border:1px dashed var(--line); color:var(--dim); border-radius:99px;
+    padding:5px 11px; font-size:13px; cursor:pointer; white-space:nowrap; flex:none;
+  }
+  .sugg button:hover { border-style:solid; border-color:var(--green); color:var(--green); }
+  .sugg .lbl { color:var(--faint); font-size:12px; align-self:center; padding-right:2px; flex:none; }
+
+  .items { flex:1; overflow-y:auto; padding:8px 10px 90px; }
+  .items::-webkit-scrollbar, .lists::-webkit-scrollbar { width:8px; }
+  .items::-webkit-scrollbar-thumb, .lists::-webkit-scrollbar-thumb { background:#2a3540; border-radius:9px; }
+
+  .grp { color:var(--faint); font-size:11px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
+    padding:14px 8px 6px; }
+  .item {
+    display:flex; align-items:center; gap:11px; padding:10px 10px; border-radius:11px;
+    background:var(--panel); border:1px solid transparent; margin-bottom:4px;
+  }
+  .item:hover { border-color:var(--line); }
+  .item.drag { opacity:.4; }
+  .item.over { border-color:var(--green); }
+  .grip {
+    cursor:grab; color:var(--faint); flex:none; width:20px; text-align:center; font-size:15px;
+    touch-action:none; user-select:none;
+  }
+  .grip:active { cursor:grabbing; }
+  .box {
+    flex:none; width:22px; height:22px; border-radius:7px; border:2px solid #3c4a58;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; background:none;
+  }
+  .box:hover { border-color:var(--green); }
+  .box svg { opacity:0; transform:scale(.7); transition:opacity .12s, transform .12s; }
+  .item.done .box { background:var(--green); border-color:var(--green); }
+  .item.done .box svg { opacity:1; transform:none; }
+  .txt {
+    flex:1; border:none; background:none; outline:none; padding:2px 2px; min-width:0;
+  }
+  .item.done .txt { color:var(--faint); text-decoration:line-through; text-decoration-thickness:1.5px; }
+  .qty {
+    width:52px; text-align:center; background:var(--panel-2); border:1px solid var(--line);
+    border-radius:7px; padding:4px 2px; font-size:13px; color:var(--dim); outline:none;
+  }
+  .qty:focus { border-color:#3d4a5a; color:var(--ink); }
+  .star { background:none; border:none; cursor:pointer; color:var(--faint); font-size:14px; padding:2px 4px; }
+  .star.on { color:var(--amber); }
+  .rm { background:none; border:none; color:var(--faint); cursor:pointer; padding:4px 6px; border-radius:6px; }
+  .rm:hover { color:var(--red); background:rgba(248,113,113,.1); }
+  .empty { color:var(--faint); text-align:center; padding:50px 20px; font-size:14px; line-height:1.7; }
+
+  .veil { position:fixed; inset:0; background:rgba(8,11,14,.75); backdrop-filter:blur(4px);
+    display:none; align-items:center; justify-content:center; z-index:40; padding:18px; }
+  .veil.on { display:flex; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:18px;
+    width:min(520px, 96vw); max-height:86vh; overflow-y:auto; }
+  .card h3 { font-size:17px; margin-bottom:4px; }
+  .card p { color:var(--dim); font-size:13.5px; }
+  .tpl { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; margin-top:14px; }
+  .tpl button { background:var(--panel-2); border:1px solid var(--line); border-radius:12px; padding:13px;
+    cursor:pointer; text-align:left; }
+  .tpl button:hover { border-color:var(--green); }
+  .tpl .t { font-weight:600; display:flex; gap:7px; align-items:center; }
+  .tpl .d { color:var(--faint); font-size:12px; margin-top:3px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+  textarea.bulk { width:100%; height:150px; background:var(--panel-2); border:1px solid var(--line);
+    border-radius:11px; padding:11px; outline:none; resize:vertical; font-size:14px; line-height:1.6; }
+  textarea.bulk:focus { border-color:#3d4a5a; }
+  .hint { color:var(--faint); font-size:12.5px; margin-top:9px; line-height:1.6; }
+  .toast { position:fixed; left:50%; bottom:22px; transform:translateX(-50%) translateY(20px);
+    background:var(--panel-2); border:1px solid var(--line); border-radius:11px; padding:10px 15px;
+    font-size:13.5px; opacity:0; pointer-events:none; transition:opacity .18s, transform .18s; z-index:50;
+    display:flex; gap:12px; align-items:center; }
+  .toast.on { opacity:1; transform:translateX(-50%); pointer-events:auto; }
+  .toast button { background:none; border:none; color:var(--green); font-weight:600; cursor:pointer; }
+</style>
+</head>
+<body>
+
+<header>
+  <button class="btn icon ghost" id="hamburger">☰</button>
+  <div class="brand">
+    <svg width="20" height="20" viewBox="0 0 32 32" aria-hidden="true">
+      <path d="M6 12l4 4 8-8" stroke="#4ade80" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M6 24l4 4 8-8" stroke="#475569" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    Lists
+  </div>
+  <div class="sp"></div>
+  <span class="chip" id="saved">saved on this device</span>
+  <button class="btn icon ghost" id="b-export" title="Export or import">⇅</button>
+</header>
+
+<div class="side-veil" id="side-veil"></div>
+
+<div class="wrap">
+  <aside class="side" id="side">
+    <h2>Your lists</h2>
+    <div class="lists" id="lists"></div>
+    <div class="foot">
+      <button class="btn" id="b-new">＋ New list</button>
+      <button class="btn ghost" id="b-tpl">From template</button>
+    </div>
+  </aside>
+
+  <main>
+    <div class="tbar">
+      <span id="cur-ic" style="font-size:19px"></span>
+      <input class="title" id="cur-name" placeholder="Untitled list">
+      <div class="sp"></div>
+      <div class="prog"><div class="bar"><i id="bar"></i></div><span id="count"></span></div>
+      <button class="btn" id="b-mode" title="How finished items behave">✓ keep visible</button>
+      <button class="btn ghost icon" id="b-more" title="More">⋯</button>
+    </div>
+
+    <div class="addbar">
+      <input id="add" placeholder="Add an item and press Enter…" autocomplete="off" enterkeyhint="done">
+      <button class="btn" id="b-add">Add</button>
+    </div>
+    <div class="sugg" id="sugg"></div>
+
+    <div class="items" id="items"></div>
+  </main>
+</div>
+
+<!-- templates -->
+<div class="veil" id="v-tpl">
+  <div class="card">
+    <h3>Start from a template</h3>
+    <p id="tpl-mine" style="display:none">Your own saved lists come first.</p>
+    <div class="tpl" id="tpl-grid"></div>
+    <div class="row"><button class="btn ghost" data-close>Cancel</button></div>
+  </div>
+</div>
+
+<!-- more menu -->
+<div class="veil" id="v-more">
+  <div class="card">
+    <h3 id="more-title">List options</h3>
+    <div class="row">
+      <button class="btn" id="m-again">🔁 Start again</button>
+      <button class="btn" id="m-dup">Duplicate as new list</button>
+      <button class="btn" id="m-savetpl">⭐ Save as my template</button>
+      <button class="btn" id="m-share">🔗 Share a copy</button>
+    </div>
+    <div class="row">
+      <button class="btn" id="m-bulk">Paste many items</button>
+      <button class="btn" id="m-sort">Sort A–Z</button>
+      <button class="btn" id="m-uncheck">Uncheck all</button>
+      <button class="btn" id="m-clear">Remove finished</button>
+      <button class="btn" id="m-copy">Copy as text</button>
+      <button class="btn danger" id="m-del">Delete list</button>
+    </div>
+    <p class="hint"><b>Start again</b> unchecks everything in place — the same list, ready for the next trip.
+      <b>Duplicate</b> keeps this one and opens a fresh copy. <b>Save as my template</b> puts it in the
+      template picker so you can start from it any time.<br>
+      Icon and name are editable at the top. Drag the ⠿ handle to reorder, or hold Alt and press ↑/↓ while
+      typing in an item.</p>
+    <div class="row"><button class="btn ghost" data-close>Done</button></div>
+  </div>
+</div>
+
+<!-- share -->
+<div class="veil" id="v-share">
+  <div class="card">
+    <h3>Share this list</h3>
+    <p id="share-sum"></p>
+    <input id="share-url" readonly style="width:100%;background:var(--panel-2);border:1px solid var(--line);
+      border-radius:10px;padding:11px;margin-top:12px;font-size:13px;outline:none">
+    <div class="row">
+      <button class="btn" id="sh-copy">Copy link</button>
+      <button class="btn ghost" id="sh-open">Preview it</button>
+      <button class="btn ghost" data-close>Done</button>
+    </div>
+    <p class="hint" id="share-note"></p>
+  </div>
+</div>
+
+<!-- an incoming shared list -->
+<div class="veil" id="v-incoming">
+  <div class="card">
+    <h3 id="in-title">Someone shared a list</h3>
+    <p id="in-sum"></p>
+    <div id="in-prev" style="margin-top:12px;max-height:190px;overflow-y:auto;color:var(--dim);font-size:13.5px"></div>
+    <div class="row">
+      <button class="btn" id="in-add">Add it to my lists</button>
+      <button class="btn ghost" id="in-skip">No thanks</button>
+    </div>
+  </div>
+</div>
+
+<!-- start again -->
+<div class="veil" id="v-again">
+  <div class="card">
+    <h3>Start this list again</h3>
+    <p id="again-sum"></p>
+    <div class="row" style="margin-top:16px">
+      <button class="btn" id="ag-all">Keep everything, uncheck it</button>
+      <button class="btn" id="ag-staples">Keep only the staples ⭐</button>
+      <button class="btn" id="ag-strip">Keep unfinished, drop the rest</button>
+    </div>
+    <p class="hint">A shopping list is rarely identical twice. Star the things you buy every time —
+      then “keep only the staples” gives you the regulars and nothing else, ready to add this week's extras.</p>
+    <div class="row"><button class="btn ghost" data-close>Cancel</button></div>
+  </div>
+</div>
+
+<!-- bulk add -->
+<div class="veil" id="v-bulk">
+  <div class="card">
+    <h3>Paste many items</h3>
+    <p>One per line. A leading number becomes a quantity, and a trailing <b>*</b> stars the item.</p>
+    <textarea class="bulk" id="bulk" placeholder="2 milk&#10;bread&#10;coffee *&#10;6 eggs"></textarea>
+    <div class="row">
+      <button class="btn" id="bulk-go">Add them</button>
+      <button class="btn ghost" data-close>Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- export / import -->
+<div class="veil" id="v-io">
+  <div class="card">
+    <h3>Export &amp; import</h3>
+    <p>Everything lives in this browser. Export before clearing site data, or to move to another device.</p>
+    <div class="row">
+      <button class="btn" id="io-download">Download backup</button>
+      <button class="btn" id="io-upload">Load backup</button>
+      <input type="file" id="io-file" accept=".json,application/json" style="display:none">
+    </div>
+    <p class="hint" id="io-note"></p>
+    <div class="row"><button class="btn ghost" data-close>Close</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span id="toast-t"></span><button id="toast-a" style="display:none"></button></div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = t => String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+/* ============================================================
+   storage — this browser only, no server anywhere
+   ============================================================ */
+const KEY = 'lists.v1';
+let DB = { lists: [], cur: null, mine: [], seen: {} };
+let storageOK = true;
+
+function load() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    // mutate rather than rebind, so nothing that captured DB earlier is left pointing at a stale object
+    if (raw) {
+      const inc = JSON.parse(raw);
+      DB.lists = inc.lists || []; DB.cur = inc.cur || null;
+      DB.mine = inc.mine || []; DB.seen = inc.seen || {};
+    }
+  } catch (e) { storageOK = false; }
+  if (!Array.isArray(DB.lists)) DB.lists = [];
+  if (!Array.isArray(DB.mine)) DB.mine = [];
+  if (!DB.seen || typeof DB.seen !== 'object') DB.seen = {};
+  DB.lists.forEach(l => {
+    l.items = l.items || [];
+    if (l.hideDone === undefined) l.hideDone = false;
+    l.items.forEach(it => { if (!it.id) it.id = uid(); });
+  });
+}
+let saveT = null;
+function save() {
+  clearTimeout(saveT);
+  saveT = setTimeout(() => {
+    try { localStorage.setItem(KEY, JSON.stringify(DB)); }
+    catch (e) {
+      storageOK = false;
+      $('saved').textContent = 'could not save — storage is full or blocked';
+      $('saved').style.color = 'var(--red)';
+    }
+  }, 180);
+}
+const curList = () => DB.lists.find(l => l.id === DB.cur) || DB.lists[0] || null;
+
+/* ============================================================
+   templates
+   ============================================================ */
+const TEMPLATES = [
+  { icon:'🛒', name:'Groceries', desc:'sorted by aisle', groups:true, items:[
+    ['Produce','apples','bananas','spinach','tomatoes','onions','garlic'],
+    ['Dairy & eggs','milk','eggs','butter','yoghurt','cheese'],
+    ['Bakery','bread','tortillas'],
+    ['Meat & fish','chicken','salmon'],
+    ['Pantry','rice','pasta','olive oil','coffee','tinned tomatoes'],
+    ['Frozen','peas','ice cream'],
+    ['Household','dish soap','paper towels','bin bags']
+  ]},
+  { icon:'🧳', name:'Packing', desc:'a week away', groups:true, items:[
+    ['Documents','passport','tickets','insurance card','driving licence'],
+    ['Clothes','underwear','socks','t-shirts','trousers','jumper','rain jacket','pyjamas','shoes'],
+    ['Toiletries','toothbrush','toothpaste','deodorant','shampoo','razor','sunscreen','medication'],
+    ['Tech','phone charger','power bank','headphones','adapter plug','camera'],
+    ['Before leaving','lock the windows','bins out','thermostat down','stop the post','tell a neighbour']
+  ]},
+  { icon:'🏕', name:'Camping', desc:'weekend in the woods', groups:true, items:[
+    ['Shelter','tent','poles & stakes','footprint','sleeping bag','sleeping pad','pillow'],
+    ['Kitchen','stove','fuel','lighter','pot','mug','utensils','cooler','water filter','rubbish bags'],
+    ['Wear','boots','rain shell','fleece','hat','headlamp','spare socks'],
+    ['Safety','first aid kit','map','power bank','bug spray','bear spray','knife']
+  ]},
+  { icon:'✈️', name:'Trip planning', desc:'before you go', groups:true, items:[
+    ['Book','flights','accommodation','car or transfers','key activities'],
+    ['Admin','check passport expiry','travel insurance','tell the bank','download offline maps','currency'],
+    ['Health','vaccinations','prescriptions','travel kit'],
+    ['Home','pet or plant sitter','hold deliveries','set lights on timer']
+  ]},
+  { icon:'🏠', name:'Moving', desc:'change of address', groups:true, items:[
+    ['Two weeks out','book movers','order boxes','start decluttering','notify landlord'],
+    ['Change address','bank','employer','insurance','doctor','subscriptions','post redirect'],
+    ['Utilities','electricity','water','internet','gas','council'],
+    ['Moving day','first-night box','tools','cleaning supplies','meter readings','hand over keys']
+  ]},
+  { icon:'✅', name:'Blank', desc:'start empty', groups:false, items:[] }
+];
+
+/* ============================================================
+   items
+   ============================================================ */
+// "2 milk *" -> qty 2, text milk, starred
+function parseLine(line) {
+  let t = line.trim();
+  if (!t) return null;
+  let star = false;
+  if (/\*\s*$/.test(t)) { star = true; t = t.replace(/\*\s*$/, '').trim(); }
+  let qty = '';
+  const m = t.match(/^(\d+(?:[.,]\d+)?\s*(?:x|kg|g|lb|oz|l|ml|pcs?)?)\s+(.{2,})$/i);
+  if (m) { qty = m[1].trim(); t = m[2].trim(); }
+  return { id: uid(), text: t, qty, done: false, star, group: '' };
+}
+function addItem(text, opts) {
+  const l = curList(); if (!l) return;
+  const it = parseLine(text);
+  if (!it) return;
+  Object.assign(it, opts || {});
+  // new items land above the finished ones, not at the very bottom
+  const firstDone = l.items.findIndex(x => x.done);
+  if (firstDone >= 0 && !l.hideDone) l.items.splice(firstDone, 0, it);
+  else l.items.push(it);
+  save();
+  return it;
+}
+
+function newList(tpl) {
+  const l = { id: uid(), name: tpl ? tpl.name : 'New list', icon: tpl ? tpl.icon : '📋',
+    items: [], hideDone: false, created: Date.now() };
+  if (tpl && tpl.items.length) {
+    for (const row of tpl.items) {
+      const [group, ...things] = row;
+      for (const t of things) {
+        const it = parseLine(t);
+        it.group = tpl.groups ? group : '';
+        l.items.push(it);
+      }
+    }
+  }
+  DB.lists.unshift(l);
+  DB.cur = l.id;
+  save(); render();
+  if (!tpl || !tpl.items.length) setTimeout(() => { $('cur-name').focus(); $('cur-name').select(); }, 30);
+}
+
+/* ============================================================
+   rendering
+   ============================================================ */
+const CHECK = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none">' +
+  '<path d="M4 12l5 5L20 6" stroke="#0f1216" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+function renderLists() {
+  const box = $('lists');
+  if (!DB.lists.length) { box.innerHTML = '<p class="empty" style="padding:24px 12px">No lists yet.</p>'; return; }
+  box.innerHTML = DB.lists.map(l => {
+    const left = l.items.filter(i => !i.done).length;
+    return '<div class="lrow' + (l.id === DB.cur ? ' on' : '') + '" data-l="' + l.id + '">' +
+      '<span class="ic">' + esc(l.icon) + '</span>' +
+      '<span class="nm">' + esc(l.name) + '</span>' +
+      '<span class="ct">' + (left || (l.items.length ? '✓' : '')) + '</span></div>';
+  }).join('');
+  box.querySelectorAll('.lrow').forEach(el => el.addEventListener('click', () => {
+    DB.cur = el.dataset.l; save(); render(); closeSide();
+  }));
+}
+
+function renderSuggestions() {
+  const box = $('sugg');
+  const l = curList();
+  if (!l) { box.innerHTML = ''; return; }
+  const here = new Set(l.items.map(i => i.text.trim().toLowerCase()));
+  const tally = DB.seen[l.id] || {};
+  const picks = Object.entries(tally)
+    .filter(([t, n]) => n >= 2 && !here.has(t))     // twice or more, and not already on the list
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 12);
+  if (!picks.length) { box.innerHTML = ''; return; }
+  box.innerHTML = '<span class="lbl">you usually add:</span>' +
+    picks.map(([t, n]) => '<button data-s="' + esc(t) + '" title="added ' + n + ' times">＋ ' + esc(t) + '</button>').join('');
+  box.querySelectorAll('[data-s]').forEach(b => b.addEventListener('click', () => {
+    addItem(b.dataset.s);
+    renderItems(); renderLists(); renderSuggestions();
+  }));
+}
+
+function renderItems() {
+  const l = curList();
+  const box = $('items');
+  if (!l) {
+    box.innerHTML = '<p class="empty">Nothing here yet.<br>Make a list on the left, or start from a template.</p>';
+    $('cur-name').value = ''; $('cur-ic').textContent = ''; $('count').textContent = '';
+    $('bar').style.width = '0%';
+    return;
+  }
+  $('cur-name').value = l.name;
+  $('cur-ic').textContent = l.icon;
+  const done = l.items.filter(i => i.done).length;
+  const total = l.items.length;
+  $('count').textContent = total ? done + '/' + total : '';
+  $('bar').style.width = total ? (done / total * 100) + '%' : '0%';
+  $('b-mode').textContent = l.hideDone ? '✓ hide finished' : '✓ keep visible';
+  $('b-mode').classList.toggle('on', l.hideDone);
+
+  const visible = l.hideDone ? l.items.filter(i => !i.done) : l.items;
+  if (!visible.length) {
+    box.innerHTML = total
+      ? '<p class="empty">Everything is done. 🎉<br><span style="font-size:13px">Switch to “keep visible” to see the finished items.</span></p>'
+      : '<p class="empty">Empty list.<br><span style="font-size:13px">Type above to add the first item.</span></p>';
+    return;
+  }
+
+  let html = '', lastGroup = null;
+  for (const it of visible) {
+    const gr = it.group || '';
+    if (gr !== lastGroup) {
+      if (gr) html += '<div class="grp">' + esc(gr) + '</div>';
+      else if (lastGroup !== null) html += '<div class="grp">Other</div>';
+      lastGroup = gr;
+    }
+    html +=
+      '<div class="item' + (it.done ? ' done' : '') + '" data-i="' + it.id + '" draggable="false">' +
+        '<span class="grip" data-grip title="Drag to reorder">⠿</span>' +
+        '<button class="box" data-check aria-label="Toggle">' + CHECK + '</button>' +
+        (it.qty !== '' ? '<input class="qty" value="' + esc(it.qty) + '" data-qty>' : '') +
+        '<input class="txt" value="' + esc(it.text) + '" data-txt>' +
+        '<button class="star' + (it.star ? ' on' : '') + '" data-star title="Star">' + (it.star ? '★' : '☆') + '</button>' +
+        '<button class="rm" data-rm title="Remove">✕</button>' +
+      '</div>';
+  }
+  box.innerHTML = html;
+  wireItems();
+}
+
+function wireItems() {
+  const l = curList();
+  const box = $('items');
+  const find = id => l.items.find(i => i.id === id);
+
+  box.querySelectorAll('.item').forEach(el => {
+    const it = find(el.dataset.i);
+    if (!it) return;
+    el.querySelector('[data-check]').addEventListener('click', () => toggle(it, el));
+    el.querySelector('[data-star]').addEventListener('click', () => {
+      it.star = !it.star; save(); renderItems();
+    });
+    el.querySelector('[data-rm]').addEventListener('click', () => removeItem(it));
+    const txt = el.querySelector('[data-txt]');
+    txt.addEventListener('input', () => { it.text = txt.value; save(); });
+    txt.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); $('add').focus(); }
+      if (e.key === 'Backspace' && txt.value === '') { e.preventDefault(); removeItem(it); }
+      if ((e.altKey || e.metaKey) && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        e.preventDefault(); nudge(it, e.key === 'ArrowUp' ? -1 : 1);
+      }
+    });
+    const qty = el.querySelector('[data-qty]');
+    if (qty) qty.addEventListener('input', () => { it.qty = qty.value; save(); });
+    dragify(el, it);
+  });
+}
+
+// a tally of what this list has actually contained over time, used for suggestions
+function remember(listId, text) {
+  const key = listId;
+  DB.seen[key] = DB.seen[key] || {};
+  const t = text.trim().toLowerCase();
+  if (t.length < 2) return;
+  DB.seen[key][t] = (DB.seen[key][t] || 0) + 1;
+  const entries = Object.entries(DB.seen[key]);
+  if (entries.length > 200) {                       // keep the tally from growing without bound
+    entries.sort((a, b) => b[1] - a[1]);
+    DB.seen[key] = Object.fromEntries(entries.slice(0, 150));
+  }
+}
+
+function toggle(it, el) {
+  const l = curList();
+  it.done = !it.done;
+  if (it.done) remember(l.id, it.text);
+  if (it.done) {
+    // finished items sink to the bottom, keeping the working part of the list at the top
+    const i = l.items.indexOf(it);
+    l.items.splice(i, 1);
+    l.items.push(it);
+  }
+  save();
+  if (el && !l.hideDone && !it.done) renderItems();
+  else renderItems();
+}
+function removeItem(it) {
+  const l = curList();
+  const i = l.items.indexOf(it);
+  const copy = Object.assign({}, it);
+  l.items.splice(i, 1);
+  save(); renderItems(); renderLists();
+  toast('Removed “' + it.text + '”', 'Undo', () => {
+    l.items.splice(Math.min(i, l.items.length), 0, copy);
+    save(); renderItems(); renderLists();
+  });
+}
+function nudge(it, dir) {
+  const l = curList();
+  const i = l.items.indexOf(it), j = i + dir;
+  if (j < 0 || j >= l.items.length) return;
+  [l.items[i], l.items[j]] = [l.items[j], l.items[i]];
+  save(); renderItems();
+  setTimeout(() => {
+    const el = $('items').querySelector('[data-i="' + it.id + '"] [data-txt]');
+    if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+  }, 0);
+}
+
+/* ============================================================
+   drag to reorder — pointer events, so it works with a finger too
+   ============================================================ */
+let dragState = null;
+function dragify(el, it) {
+  const grip = el.querySelector('[data-grip]');
+  grip.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    grip.setPointerCapture(e.pointerId);
+    dragState = { el, it, id: e.pointerId };
+    el.classList.add('drag');
+  });
+  grip.addEventListener('pointermove', e => {
+    if (!dragState || dragState.id !== e.pointerId) return;
+    const over = document.elementFromPoint(e.clientX, e.clientY);
+    const row = over && over.closest ? over.closest('.item') : null;
+    $('items').querySelectorAll('.item.over').forEach(x => x.classList.remove('over'));
+    if (row && row !== dragState.el) row.classList.add('over');
+  });
+  const end = e => {
+    if (!dragState || dragState.id !== e.pointerId) return;
+    const over = document.elementFromPoint(e.clientX, e.clientY);
+    const row = over && over.closest ? over.closest('.item') : null;
+    dragState.el.classList.remove('drag');
+    $('items').querySelectorAll('.item.over').forEach(x => x.classList.remove('over'));
+    if (row && row !== dragState.el) moveBefore(dragState.it, row.dataset.i);
+    dragState = null;
+  };
+  grip.addEventListener('pointerup', end);
+  grip.addEventListener('pointercancel', end);
+}
+function moveBefore(it, targetId) {
+  const l = curList();
+  const target = l.items.find(x => x.id === targetId);
+  if (!target || target === it) return;
+  const from = l.items.indexOf(it);
+  l.items.splice(from, 1);
+  const to = l.items.indexOf(target);
+  const downward = from < to;
+  l.items.splice(downward ? to + 1 : to, 0, it);
+  it.group = target.group;                       // dropping into a section adopts it
+  save(); renderItems();
+}
+
+/* ============================================================
+   toast with undo
+   ============================================================ */
+let toastT = null;
+function toast(msg, actionLabel, action) {
+  $('toast-t').textContent = msg;
+  const b = $('toast-a');
+  if (actionLabel) {
+    b.style.display = ''; b.textContent = actionLabel;
+    b.onclick = () => { action(); hideToast(); };
+  } else b.style.display = 'none';
+  $('toast').classList.add('on');
+  clearTimeout(toastT);
+  toastT = setTimeout(hideToast, 5000);
+}
+const hideToast = () => $('toast').classList.remove('on');
+
+/* ============================================================
+   ui wiring
+   ============================================================ */
+function render() { renderLists(); renderItems(); renderSuggestions(); }
+
+$('add').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const v = $('add').value.trim();
+  if (!v) return;
+  // several at once: "milk, bread, eggs"
+  const parts = v.includes(',') ? v.split(',') : [v];
+  parts.forEach(p => addItem(p));
+  $('add').value = '';
+  renderItems(); renderLists(); renderSuggestions();
+  $('items').scrollTop = $('items').scrollHeight;
+});
+$('b-add').addEventListener('click', () => {
+  $('add').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+  $('add').focus();
+});
+$('cur-name').addEventListener('input', () => {
+  const l = curList(); if (!l) return;
+  l.name = $('cur-name').value; save(); renderLists();
+});
+$('cur-ic').addEventListener('click', () => {
+  const l = curList(); if (!l) return;
+  const icons = ['📋','🛒','🧳','🏕','✈️','🏠','🎁','🔧','📚','🍳','💪','🐾','🎬','🌱'];
+  l.icon = icons[(icons.indexOf(l.icon) + 1) % icons.length];
+  save(); render();
+});
+$('cur-ic').style.cursor = 'pointer';
+$('cur-ic').title = 'Tap to change the icon';
+
+$('b-mode').addEventListener('click', () => {
+  const l = curList(); if (!l) return;
+  l.hideDone = !l.hideDone; save(); renderItems();
+});
+$('b-new').addEventListener('click', () => newList(null));
+$('b-tpl').addEventListener('click', () => openTpl());
+
+function openTpl() {
+  const mine = DB.mine.map((t, i) =>
+    '<button data-m="' + i + '"><span class="t">' + esc(t.icon) + ' ' + esc(t.name) + '</span>' +
+    '<span class="d">' + esc(t.desc) + '</span>' +
+    '<span class="d" style="color:var(--faint)"><span data-del="' + i + '" ' +
+    'style="text-decoration:underline;cursor:pointer">forget</span></span></button>').join('');
+  const built = TEMPLATES.map((t, i) =>
+    '<button data-t="' + i + '"><span class="t">' + t.icon + ' ' + esc(t.name) + '</span>' +
+    '<span class="d">' + esc(t.desc) + '</span></button>').join('');
+  $('tpl-grid').innerHTML = mine + built;
+  $('tpl-mine').style.display = DB.mine.length ? '' : 'none';
+  $('tpl-grid').querySelectorAll('[data-t]').forEach(b => b.addEventListener('click', () => {
+    newList(TEMPLATES[+b.dataset.t]); close('v-tpl'); closeSide();
+  }));
+  $('tpl-grid').querySelectorAll('[data-m]').forEach(b => b.addEventListener('click', e => {
+    if (e.target.dataset.del !== undefined) return;
+    fromMine(DB.mine[+b.dataset.m]); close('v-tpl'); closeSide();
+  }));
+  $('tpl-grid').querySelectorAll('[data-del]').forEach(el => el.addEventListener('click', e => {
+    e.stopPropagation();
+    const i = +el.dataset.del, t = DB.mine[i];
+    DB.mine.splice(i, 1); save(); openTpl();
+    toast('Forgot template “' + t.name + '”', 'Undo', () => { DB.mine.splice(i, 0, t); save(); openTpl(); });
+  }));
+  open('v-tpl');
+}
+function fromMine(t) {
+  const l = { id: uid(), name: nextName(t.name), icon: t.icon, items: [], hideDone: false, created: Date.now() };
+  l.items = t.rows.map(r => ({ id: uid(), text: r.text, qty: r.qty || '', done: false,
+    star: !!r.star, group: r.group || '' }));
+  DB.lists.unshift(l); DB.cur = l.id;
+  save(); render();
+}
+const open = id => $(id).classList.add('on');
+const close = id => $(id).classList.remove('on');
+document.querySelectorAll('[data-close]').forEach(b =>
+  b.addEventListener('click', () => b.closest('.veil').classList.remove('on')));
+document.querySelectorAll('.veil').forEach(v =>
+  v.addEventListener('click', e => { if (e.target === v) v.classList.remove('on'); }));
+
+$('b-more').addEventListener('click', () => {
+  const l = curList(); if (!l) return;
+  $('more-title').textContent = l.icon + ' ' + l.name;
+  open('v-more');
+});
+$('m-sort').addEventListener('click', () => {
+  const l = curList();
+  l.items.sort((a, b) => (a.done - b.done) || (a.group || '').localeCompare(b.group || '') ||
+    a.text.localeCompare(b.text, undefined, { sensitivity: 'base' }));
+  save(); renderItems(); close('v-more');
+});
+$('m-uncheck').addEventListener('click', () => {
+  const l = curList(); l.items.forEach(i => i.done = false);
+  save(); render(); close('v-more');
+});
+$('m-clear').addEventListener('click', () => {
+  const l = curList();
+  const removed = l.items.filter(i => i.done);
+  if (!removed.length) { close('v-more'); return; }
+  l.items = l.items.filter(i => !i.done);
+  save(); render(); close('v-more');
+  toast(removed.length + ' finished item' + (removed.length > 1 ? 's' : '') + ' removed', 'Undo', () => {
+    l.items.push(...removed); save(); render();
+  });
+});
+$('m-again').addEventListener('click', () => {
+  const l = curList(); if (!l) return;
+  const done = l.items.filter(i => i.done).length;
+  const stars = l.items.filter(i => i.star).length;
+  $('again-sum').innerHTML = '<b>' + esc(l.name) + '</b> has ' + l.items.length + ' items — ' +
+    done + ' ticked off' + (stars ? ', ' + stars + ' starred as staples' : '') + '.';
+  close('v-more'); open('v-again');
+});
+function startAgain(mode) {
+  const l = curList();
+  const snapshot = JSON.parse(JSON.stringify(l.items));
+  l.items.forEach(i => remember(l.id, i.text));       // everything that was on it counts as history
+  if (mode === 'staples') l.items = l.items.filter(i => i.star);
+  else if (mode === 'strip') l.items = l.items.filter(i => !i.done);
+  l.items.forEach(i => i.done = false);
+  save(); render(); close('v-again');
+  const gone = snapshot.length - l.items.length;
+  toast(mode === 'all' ? 'Unchecked — ready to go again'
+      : gone + ' item' + (gone === 1 ? '' : 's') + ' cleared, ' + l.items.length + ' kept',
+    'Undo', () => { l.items = snapshot; save(); render(); });
+}
+$('ag-all').addEventListener('click', () => startAgain('all'));
+$('ag-staples').addEventListener('click', () => startAgain('staples'));
+$('ag-strip').addEventListener('click', () => startAgain('strip'));
+
+// save the current list as a reusable template of your own
+$('m-savetpl').addEventListener('click', () => {
+  const l = curList(); if (!l) return;
+  const tpl = {
+    id: uid(), icon: l.icon, name: l.name, desc: 'your template · ' + l.items.length + ' items',
+    mine: true,
+    rows: l.items.map(i => ({ text: i.text, qty: i.qty, star: i.star, group: i.group }))
+  };
+  const at = DB.mine.findIndex(t => t.name === tpl.name);
+  if (at >= 0) DB.mine[at] = tpl; else DB.mine.push(tpl);
+  save(); close('v-more');
+  toast(at >= 0 ? 'Template “' + l.name + '” updated' : 'Saved “' + l.name + '” as a template');
+});
+
+$('m-dup').addEventListener('click', () => {
+  const l = curList();
+  const copy = JSON.parse(JSON.stringify(l));
+  copy.id = uid();
+  copy.name = nextName(l.name);
+  copy.created = Date.now();
+  copy.items.forEach(i => { i.id = uid(); i.done = false; });
+  DB.seen[copy.id] = Object.assign({}, DB.seen[l.id] || {});   // the copy inherits the history
+  DB.lists.unshift(copy); DB.cur = copy.id;
+  save(); render(); close('v-more');
+  toast('Copied to “' + copy.name + '”');
+});
+// "Groceries" -> "Groceries 2"; "Groceries 2" -> "Groceries 3"
+function nextName(name) {
+  const m = name.match(/^(.*?)\s*(\d+)$/);
+  const base = m ? m[1] : name;
+  let n = m ? +m[2] + 1 : 2;
+  const taken = new Set(DB.lists.map(l => l.name));
+  while (taken.has(base + ' ' + n)) n++;
+  return base + ' ' + n;
+}
+$('m-copy').addEventListener('click', () => {
+  const l = curList();
+  const text = l.name + '\n' + l.items.map(i =>
+    (i.done ? '[x] ' : '[ ] ') + (i.qty ? i.qty + ' ' : '') + i.text).join('\n');
+  navigator.clipboard && navigator.clipboard.writeText(text);
+  close('v-more'); toast('Copied as text');
+});
+$('m-del').addEventListener('click', () => {
+  const l = curList();
+  const i = DB.lists.indexOf(l);
+  DB.lists.splice(i, 1);
+  DB.cur = (DB.lists[0] || {}).id || null;
+  save(); render(); close('v-more');
+  toast('Deleted “' + l.name + '”', 'Undo', () => {
+    DB.lists.splice(i, 0, l); DB.cur = l.id; save(); render();
+  });
+});
+$('m-bulk').addEventListener('click', () => { close('v-more'); $('bulk').value = ''; open('v-bulk');
+  setTimeout(() => $('bulk').focus(), 40); });
+$('bulk-go').addEventListener('click', () => {
+  const lines = $('bulk').value.split('\n');
+  let group = '', n = 0;
+  for (const raw of lines) {
+    const t = raw.trim();
+    if (!t) continue;
+    if (/^#+\s+/.test(t) || /:$/.test(t)) { group = t.replace(/^#+\s+/, '').replace(/:$/, ''); continue; }
+    const it = addItem(t.replace(/^[-*]\s+/, ''), { group });
+    if (it) n++;
+  }
+  close('v-bulk'); render();
+  toast(n + ' item' + (n === 1 ? '' : 's') + ' added');
+});
+
+/* ============================================================
+   sharing — the whole list rides in the URL fragment.
+   A fragment is never sent to a server, so even on shared hosting
+   the contents never leave the two browsers involved.
+   ============================================================ */
+const b64url = {
+  enc(bytes) {
+    let s = '';
+    for (const b of bytes) s += String.fromCharCode(b);
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  },
+  dec(str) {
+    const s = atob(str.replace(/-/g, '+').replace(/_/g, '/'));
+    const out = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+    return out;
+  }
+};
+async function gzip(bytes) {
+  if (typeof CompressionStream !== 'function') return null;
+  const cs = new CompressionStream('gzip');
+  const blob = await new Response(new Blob([bytes]).stream().pipeThrough(cs)).blob();
+  return new Uint8Array(await blob.arrayBuffer());
+}
+async function gunzip(bytes) {
+  const ds = new DecompressionStream('gzip');
+  const blob = await new Response(new Blob([bytes]).stream().pipeThrough(ds)).blob();
+  return new Uint8Array(await blob.arrayBuffer());
+}
+// a compact shape: arrays, not objects, and empty fields dropped
+function packList(l) {
+  return [l.name, l.icon, l.items.map(i => {
+    const row = [i.text];
+    if (i.qty || i.star || i.group) row.push(i.qty || '');
+    if (i.star || i.group) row.push(i.star ? 1 : 0);
+    if (i.group) row.push(i.group);
+    return row.length === 1 ? i.text : row;
+  })];
+}
+function unpackList(p) {
+  return {
+    id: uid(), name: p[0] || 'Shared list', icon: p[1] || '📋', hideDone: false, created: Date.now(),
+    items: (p[2] || []).map(r => {
+      if (typeof r === 'string') return { id: uid(), text: r, qty: '', done: false, star: false, group: '' };
+      return { id: uid(), text: r[0] || '', qty: r[1] || '', done: false,
+        star: !!r[2], group: r[3] || '' };
+    })
+  };
+}
+async function shareUrl(l) {
+  const json = JSON.stringify(packList(l));
+  const raw = new TextEncoder().encode(json);
+  const gz = await gzip(raw);
+  const useGz = gz && gz.length < raw.length;
+  const payload = (useGz ? 'z' : 'r') + b64url.enc(useGz ? gz : raw);
+  const base = location.origin + location.pathname;
+  return { url: base + '#l=' + payload, bytes: payload.length, gz: useGz, plain: json.length };
+}
+async function readShared(payload) {
+  const kind = payload[0], body = payload.slice(1);
+  let bytes = b64url.dec(body);
+  if (kind === 'z') bytes = await gunzip(bytes);
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+$('m-share').addEventListener('click', async () => {
+  const l = curList(); if (!l) return;
+  close('v-more');
+  try {
+    const r = await shareUrl(l);
+    $('share-url').value = r.url;
+    $('share-sum').innerHTML = '<b>' + esc(l.name) + '</b> · ' + l.items.length +
+      ' items. Anyone who opens the link gets their own copy — edits do not flow back.';
+    $('share-note').innerHTML = 'The list travels in the part of the URL after the <b>#</b>, which browsers ' +
+      'never send to a server. ' + (r.gz ? 'Compressed ' + r.plain + ' → ' + r.bytes + ' characters. ' : '') +
+      (r.bytes > 1800 ? '<span style="color:var(--amber)">This link is long — some chat apps may cut it. ' +
+        'A backup file is safer for a list this size.</span>' : 'Comfortably short enough for any messaging app.');
+    open('v-share');
+  } catch (e) { toast('Could not build a link for that list'); }
+});
+$('sh-copy').addEventListener('click', () => {
+  const el = $('share-url');
+  el.select(); el.setSelectionRange(0, 99999);
+  if (navigator.clipboard) navigator.clipboard.writeText(el.value);
+  else document.execCommand && document.execCommand('copy');
+  toast('Link copied');
+});
+$('sh-open').addEventListener('click', () => window.open($('share-url').value, '_blank'));
+
+async function checkIncoming() {
+  const m = location.hash.match(/[#&]l=([^&]+)/);
+  if (!m) return false;
+  history.replaceState(null, '', location.pathname);      // don't re-import on refresh
+  let packed;
+  try { packed = await readShared(decodeURIComponent(m[1])); }
+  catch (e) { toast('That share link could not be read'); return false; }
+  const list = unpackList(packed);
+  $('in-title').textContent = list.icon + '  ' + list.name;
+  $('in-sum').textContent = list.items.length + ' items. Adding it makes your own copy — ' +
+    'nothing you do afterwards is visible to whoever sent it.';
+  $('in-prev').innerHTML = list.items.slice(0, 40).map(i =>
+    '• ' + (i.qty ? '<b>' + esc(i.qty) + '</b> ' : '') + esc(i.text) + (i.star ? ' ⭐' : '')).join('<br>') +
+    (list.items.length > 40 ? '<br>… and ' + (list.items.length - 40) + ' more' : '');
+  open('v-incoming');
+  $('in-add').onclick = () => {
+    list.name = nextName(list.name);
+    DB.lists.unshift(list); DB.cur = list.id;
+    save(); render(); close('v-incoming');
+    toast('Added “' + list.name + '”');
+  };
+  $('in-skip').onclick = () => close('v-incoming');
+  return true;
+}
+
+/* export / import */
+$('b-export').addEventListener('click', () => {
+  $('io-note').textContent = DB.lists.length + ' list' + (DB.lists.length === 1 ? '' : 's') + ', ' +
+    DB.lists.reduce((s, l) => s + l.items.length, 0) + ' items in total.' +
+    (storageOK ? '' : '  Storage is blocked in this browser, so nothing is being saved between visits.');
+  open('v-io');
+});
+$('io-download').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(DB, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'lists-' + new Date().toISOString().slice(0, 10) + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+});
+$('io-upload').addEventListener('click', () => $('io-file').click());
+$('io-file').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  f.text().then(t => {
+    try {
+      const inc = JSON.parse(t);
+      if (!Array.isArray(inc.lists)) throw new Error('not a Lists backup');
+      const existing = new Set(DB.lists.map(l => l.id));
+      const added = inc.lists.filter(l => !existing.has(l.id));
+      DB.lists.push(...added);                    // merge, never replace
+      save(); render(); close('v-io');
+      toast(added.length + ' list' + (added.length === 1 ? '' : 's') + ' imported');
+    } catch (err) { toast("That file wasn't a Lists backup"); }
+  });
+  e.target.value = '';
+});
+
+/* mobile drawer */
+const closeSide = () => { $('side').classList.remove('open'); $('side-veil').classList.remove('open'); };
+$('hamburger').addEventListener('click', () => {
+  $('side').classList.toggle('open'); $('side-veil').classList.toggle('open');
+});
+$('side-veil').addEventListener('click', closeSide);
+
+addEventListener('keydown', e => {
+  if (e.key === 'Escape') { document.querySelectorAll('.veil.on').forEach(v => v.classList.remove('on')); closeSide(); }
+  if (e.key === '/' && document.activeElement === document.body) { e.preventDefault(); $('add').focus(); }
+});
+
+/* boot */
+load();
+checkIncoming();
+if (!DB.lists.length) newList(TEMPLATES[0]);      // something to look at on the first visit
+else render();
+if (!DB.cur && DB.lists[0]) DB.cur = DB.lists[0].id;
+render();
+if (!storageOK) {
+  $('saved').textContent = 'storage blocked — changes will be lost';
+  $('saved').style.color = 'var(--amber)';
+}
+</script>
+</body>
+</html>

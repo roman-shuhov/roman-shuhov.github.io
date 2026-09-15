@@ -1,0 +1,1338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Itinerary — a trip as one flowing line</title>
+<meta name="description" content="A trip laid out as a single timeline: who is going, what happens when, and what has to be packed for each thing.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2312171d'/%3E%3Cpath d='M16 4v24' stroke='%23334155' stroke-width='2'/%3E%3Ccircle cx='16' cy='9' r='3.4' fill='%2338bdf8'/%3E%3Ccircle cx='16' cy='17' r='3.4' fill='%23f472b6'/%3E%3Ccircle cx='16' cy='25' r='3.4' fill='%23fbbf24'/%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#0d1116; --panel:#141a21; --panel-2:#1a212a; --line:#242d38; --line-2:#2f3a47;
+    --ink:#e9eef4; --dim:#93a3b4; --faint:#5c6b7c;
+    --sky:#38bdf8; --pink:#f472b6; --amber:#fbbf24; --green:#4ade80;
+    --violet:#a78bfa; --red:#f87171; --teal:#2dd4bf; --slate:#94a3b8;
+    --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; }
+  body { background:var(--bg); color:var(--ink); font-family:var(--font); font-size:15px;
+    display:flex; flex-direction:column; overflow:hidden; }
+  button, input, select, textarea { font-family:inherit; font-size:inherit; color:inherit; }
+
+  header { display:flex; align-items:center; gap:9px; padding:10px 14px;
+    padding-top:calc(10px + env(safe-area-inset-top)); border-bottom:1px solid var(--line);
+    background:var(--panel); flex:none; flex-wrap:wrap; }
+  .brand { font-weight:700; font-size:16px; }
+  .tripname { font-weight:600; background:none; border:none; padding:3px 6px; border-radius:7px;
+    min-width:70px; max-width:30vw; }
+  .tripname:focus { outline:none; background:var(--panel-2); }
+  header .sp { flex:1; }
+  .meta { color:var(--faint); font-size:12.5px; }
+
+  .btn { background:var(--panel-2); border:1px solid var(--line); border-radius:9px; padding:6px 11px;
+    cursor:pointer; font-size:13.5px; font-weight:500; display:inline-flex; align-items:center; gap:6px;
+    white-space:nowrap; }
+  .btn:hover { background:#212a35; border-color:#31404f; }
+  .btn.on { border-color:var(--sky); color:var(--sky); background:rgba(56,189,248,.12); }
+  .btn.ghost { background:none; border-color:transparent; color:var(--dim); }
+  .btn.ghost:hover { background:var(--panel-2); color:var(--ink); }
+  .btn.pri { background:var(--sky); border-color:var(--sky); color:#08131b; font-weight:600; }
+  .btn.danger:hover { border-color:var(--red); color:var(--red); }
+  .btn.sm { padding:4px 9px; font-size:12.5px; }
+  .seg { display:flex; background:var(--panel-2); border:1px solid var(--line); border-radius:9px; overflow:hidden; }
+  .seg button { background:none; border:none; padding:6px 11px; cursor:pointer; font-size:13px; color:var(--dim); }
+  .seg button.on { background:var(--sky); color:#08131b; font-weight:600; }
+  .bar { display:flex; align-items:center; gap:7px; padding:8px 14px; border-bottom:1px solid var(--line);
+    flex:none; flex-wrap:wrap; background:var(--panel); }
+
+  .crew { display:flex; align-items:center; gap:5px; }
+  .av { width:30px; height:30px; border-radius:99px; display:block; background:var(--panel-2);
+    border:2px solid transparent; cursor:pointer; flex:none; }
+  .av.sm { width:22px; height:22px; border-width:1.5px; cursor:default; }
+  .av.off { opacity:.28; }
+  .addp { width:30px; height:30px; border-radius:99px; border:1px dashed var(--line-2); background:none;
+    color:var(--faint); cursor:pointer; font-size:16px; line-height:1; flex:none; }
+  .addp:hover { border-color:var(--sky); color:var(--sky); }
+
+  .main { flex:1; display:grid; grid-template-columns:minmax(0,1fr) 312px; min-height:0; }
+  @media (max-width:900px){
+    .main { grid-template-columns:1fr; }
+    .aside { display:none; }
+    .aside.open { display:flex; position:fixed; inset:0; z-index:30; border-left:none; }
+  }
+  .flowwrap { overflow-y:auto; padding:14px 14px 110px; }
+  .flow { position:relative; max-width:780px; margin:0 auto; padding-left:76px; }
+  .spine { position:absolute; left:58px; top:10px; bottom:10px; width:2px;
+    background:linear-gradient(var(--line-2), var(--line-2)); border-radius:2px; }
+
+  .daymark { position:relative; margin:20px 0 12px; }
+  .daymark .pill { display:inline-flex; align-items:center; gap:9px; background:var(--panel);
+    border:1px solid var(--line); border-radius:99px; padding:5px 14px; font-size:13px; font-weight:600; }
+  .daymark .pill .n { color:var(--faint); font-weight:400; font-size:12px; }
+  .daymark .dot { position:absolute; left:-25px; top:7px; width:16px; height:16px; border-radius:99px;
+    background:var(--bg); border:2px solid var(--line-2); }
+  .daymark:first-child { margin-top:2px; }
+
+  .slot { position:relative; margin-bottom:11px; }
+  .slot .time { position:absolute; left:-76px; top:9px; width:48px; text-align:right; font-size:12.5px;
+    color:var(--dim); font-variant-numeric:tabular-nums; font-weight:600; }
+  .slot .node { position:absolute; left:-23px; top:12px; width:12px; height:12px; border-radius:99px;
+    border:2px solid var(--bg); }
+  .cards { display:flex; gap:8px; flex-wrap:wrap; }
+  .card-ev { flex:1 1 258px; min-width:0; background:var(--panel); border:1px solid var(--line);
+    border-left:3px solid; border-radius:12px; padding:10px 12px; cursor:pointer; }
+  .card-ev:hover { border-color:var(--line-2); }
+  .card-ev .top { display:flex; align-items:flex-start; gap:8px; }
+  .card-ev .ttl { font-weight:600; flex:1; min-width:0; }
+  .card-ev .sub { color:var(--faint); font-size:12.5px; margin-top:2px; }
+  .card-ev .who { display:flex; gap:3px; flex:none; align-items:center; }
+  .par { color:var(--faint); font-size:11px; margin:-4px 0 7px 0; }
+
+  .gap { position:relative; color:var(--faint); font-size:11.5px; padding:4px 0 10px; }
+  .gap::before { content:''; position:absolute; left:-23px; top:0; bottom:4px; width:2px;
+    background:repeating-linear-gradient(var(--line-2) 0 3px, transparent 3px 9px); }
+  .tick { position:relative; height:20px; }
+  .tick .h { position:absolute; left:-76px; top:1px; width:48px; text-align:right;
+    font-size:11px; color:#3b4756; font-variant-numeric:tabular-nums; }
+  .tick .l { position:absolute; left:-14px; right:0; top:8px; border-top:1px dotted #1f2731; }
+
+  .cl .ci { display:flex; align-items:center; gap:8px; padding:3px 0; font-size:13px; }
+  .cl .bx { width:17px; height:17px; border-radius:5px; border:2px solid #3c4a58; flex:none;
+    cursor:pointer; background:none; }
+  .cl .ci.done .bx { background:var(--green); border-color:var(--green); }
+  .cl .ci.done .tx { color:var(--faint); text-decoration:line-through; }
+  .cl .tx { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cl .x { background:none; border:none; color:var(--faint); cursor:pointer; padding:0 3px; font-size:13px; }
+  .cl .x:hover { color:var(--red); }
+  .cl .add { display:flex; gap:6px; margin-top:6px; }
+  .cl .add input { flex:1; background:var(--panel-2); border:1px solid var(--line); border-radius:8px;
+    padding:6px 9px; font-size:12.5px; outline:none; }
+  .cl .add input:focus { border-color:var(--sky); }
+  .clcount { color:var(--faint); font-size:11.5px; }
+
+  .aside { border-left:1px solid var(--line); background:var(--panel); display:flex; flex-direction:column;
+    min-height:0; transition:none; }
+  /* collapsed: a 46px rail of just the marks, click any of them to expand */
+  .main.mini { grid-template-columns:minmax(0,1fr) 46px; }
+  .main.mini .aside h2, .main.mini .gadd { display:none; }
+  .main.mini .glist { padding:8px 0; display:flex; flex-direction:column; align-items:center; gap:5px; }
+  .main.mini .gi { padding:0; width:30px; height:30px; justify-content:center; border-radius:9px;
+    cursor:pointer; position:relative; }
+  .main.mini .gi .tx, .main.mini .gi .st[data-x] { display:none; }
+  .main.mini .gi .st[data-i] { display:none; }
+  .main.mini .gi .bx { width:15px; height:15px; }
+  .main.mini .gi.imp::after { content:'★'; position:absolute; top:-1px; right:0; font-size:9px;
+    color:var(--amber); }
+  .minihead { display:none; }
+  .main.mini .minihead { display:flex; flex-direction:column; align-items:center; gap:2px;
+    padding:10px 0 6px; border-bottom:1px solid var(--line); cursor:pointer; }
+  .main.mini .minihead .n { font-size:13px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .main.mini .minihead .l { font-size:8.5px; letter-spacing:.08em; color:var(--faint); text-transform:uppercase; }
+
+  /* focus mode: everything but the line gets out of the way */
+  body.focus header, body.focus .bar { display:none; }
+  body.focus .main { grid-template-columns:1fr; }
+  body.focus .aside { display:none; }
+  .focusbar { display:none; position:fixed; top:0; left:0; right:0; z-index:25;
+    padding:calc(8px + env(safe-area-inset-top)) 14px 8px; background:linear-gradient(#0d1116, #0d1116e0, transparent);
+    align-items:center; gap:9px; }
+  body.focus .focusbar { display:flex; }
+  body.focus .flowwrap { padding-top:52px; }
+  .aside h2 { font-size:11px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--faint); padding:13px 14px 8px; display:flex; align-items:center; gap:8px; }
+  .aside h2 .sp { flex:1; }
+  .glist { flex:1; overflow-y:auto; padding:0 10px 12px; }
+  .gi { display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:9px; font-size:13.5px; }
+  .gi:hover { background:var(--panel-2); }
+  .gi.done .tx { color:var(--faint); text-decoration:line-through; }
+  .gi.imp { background:rgba(251,191,36,.08); }
+  .gi.imp .tx { font-weight:600; }
+  .gi .tx { flex:1; min-width:0; }
+  .gi .st { background:none; border:none; cursor:pointer; color:var(--faint); font-size:13px; padding:0 2px; }
+  .gi .st.on { color:var(--amber); }
+  .gi .st:hover { color:var(--ink); }
+  .gadd { padding:10px 12px; border-top:1px solid var(--line); display:flex; gap:6px; }
+  .gadd input { flex:1; background:var(--panel-2); border:1px solid var(--line); border-radius:9px;
+    padding:8px 10px; outline:none; font-size:13.5px; }
+  .gadd input:focus { border-color:var(--sky); }
+
+  .veil { position:fixed; inset:0; background:rgba(6,9,12,.78); backdrop-filter:blur(4px);
+    display:none; align-items:center; justify-content:center; z-index:40; padding:16px; }
+  .veil.on { display:flex; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:18px;
+    width:min(580px,96vw); max-height:88vh; overflow-y:auto; }
+  .card h3 { font-size:17px; margin-bottom:3px; }
+  .card p { color:var(--dim); font-size:13.5px; }
+  .frm { display:grid; grid-template-columns:92px 1fr; gap:9px 10px; align-items:center; margin-top:13px; }
+  .frm label { color:var(--faint); font-size:12.5px; }
+  .frm input, .frm select, .frm textarea { width:100%; background:var(--panel-2); border:1px solid var(--line);
+    border-radius:9px; padding:9px 11px; outline:none; }
+  .frm input:focus, .frm select:focus, .frm textarea:focus { border-color:var(--sky); }
+  .frm textarea { min-height:54px; resize:vertical; }
+  .kinds, .picker { display:flex; gap:6px; flex-wrap:wrap; }
+  .kinds button { background:var(--panel-2); border:1px solid var(--line); border-radius:99px;
+    padding:6px 11px; cursor:pointer; font-size:13px; }
+  .kinds button.on { border-color:currentColor; }
+  .picker button { background:var(--panel-2); border:2px solid transparent; border-radius:10px;
+    padding:6px 10px; cursor:pointer; font-size:13px; }
+  .picker button.on { border-color:var(--sky); }
+  .picker button.sw { width:28px; height:28px; border-radius:99px; padding:0; }
+  .whopick { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-start; margin-top:9px; }
+  .whopick .p { display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer;
+    font-size:11.5px; color:var(--faint); width:54px; text-align:center; }
+  .whopick .p.on { color:var(--ink); }
+  .whopick .p.on .av { border-color:var(--sky); }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; align-items:center; }
+  .hint { color:var(--faint); font-size:12.5px; margin-top:9px; line-height:1.6; }
+  .warn { color:var(--amber); font-size:12.5px; margin-top:9px; }
+  .sublbl { color:var(--faint); font-size:11px; letter-spacing:.1em; text-transform:uppercase; margin:13px 0 5px; }
+  .maker { display:grid; grid-template-columns:96px 1fr; gap:14px; align-items:start; }
+  @media (max-width:430px){ .maker { grid-template-columns:1fr; justify-items:center; } }
+  #p-canvas { width:96px; height:96px; border-radius:22px; background:var(--panel-2); display:block; }
+  .toast { position:fixed; left:50%; bottom:20px; transform:translateX(-50%) translateY(18px);
+    background:var(--panel-2); border:1px solid var(--line); border-radius:11px; padding:10px 15px;
+    font-size:13.5px; opacity:0; pointer-events:none; transition:.18s; z-index:50; display:flex; gap:12px; }
+  .toast.on { opacity:1; transform:translateX(-50%); pointer-events:auto; }
+  .toast button { background:none; border:none; color:var(--sky); font-weight:600; cursor:pointer; }
+  .fab { position:fixed; right:18px; bottom:calc(18px + env(safe-area-inset-bottom)); z-index:20;
+    border-radius:99px; padding:13px 19px; box-shadow:0 8px 24px rgba(0,0,0,.45); }
+  .empty { color:var(--faint); text-align:center; padding:44px 20px; line-height:1.8; }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="brand">Itinerary</span>
+  <input class="tripname" id="tname" placeholder="Trip name">
+  <span class="meta" id="tmeta"></span>
+  <div class="sp"></div>
+  <div class="crew" id="crew"></div>
+  <button class="btn ghost sm" id="b-trips">Trips</button>
+  <button class="btn ghost sm" id="b-io">⇅</button>
+</header>
+
+<div class="bar">
+  <button class="btn sm" id="b-prev">‹</button>
+  <span class="meta" id="daylab" title="Back to the whole trip"></span>
+  <button class="btn sm" id="b-next">›</button>
+  <div class="seg" id="hourseg">
+    <button data-h="day" class="on">Day hours</button>
+    <button data-h="all">All hours</button>
+  </div>
+  <div class="sp"></div>
+  <button class="btn sm" id="b-checks">☑ Trip list</button>
+  <button class="btn sm" id="b-focus" title="Hide everything but the line">⤢ Just the line</button>
+  <button class="btn sm" id="b-dates">Dates</button>
+  <button class="btn sm pri" id="b-add">＋ Event</button>
+</div>
+
+<div class="focusbar" id="focusbar">
+  <button class="btn sm" id="f-prev">‹</button>
+  <span class="meta" id="f-day"></span>
+  <button class="btn sm" id="f-next">›</button>
+  <div style="flex:1"></div>
+  <span class="meta" id="f-checks"></span>
+  <button class="btn sm" id="f-exit">✕ show panels</button>
+</div>
+
+<div class="main" id="main">
+  <div class="flowwrap" id="flowwrap"><div class="flow" id="flow"></div></div>
+  <aside class="aside" id="aside">
+    <div class="minihead" id="minihead"><span class="n" id="mini-n"></span><span class="l">left</span></div>
+    <h2>Trip checklist <span class="sp"></span><span class="clcount" id="gcount"></span>
+      <button class="btn ghost sm" id="g-mini" title="Collapse to a rail">»</button>
+      <button class="btn ghost sm" id="g-close" style="display:none">✕</button></h2>
+    <div class="glist" id="glist"></div>
+    <div class="gadd">
+      <input id="gnew" placeholder="Add — end with ! for important" enterkeyhint="done">
+      <button class="btn sm" id="g-add">＋</button>
+    </div>
+  </aside>
+</div>
+
+<button class="btn pri fab" id="fab">＋</button>
+
+<div class="veil" id="v-ev"><div class="card">
+  <h3 id="ev-title">New event</h3>
+  <div class="kinds" id="ev-kinds" style="margin-top:11px"></div>
+  <div class="frm">
+    <label>What</label><input id="ev-name" placeholder="Flight to Lisbon">
+    <label>Day</label><input type="date" id="ev-date">
+    <label>Start</label><input type="time" id="ev-start">
+    <label>Lasts</label>
+    <div style="display:flex;gap:6px;align-items:center">
+      <input type="number" id="ev-hrs" min="0" max="72" style="width:70px"><span class="meta">h</span>
+      <input type="number" id="ev-min" min="0" max="55" step="5" style="width:70px"><span class="meta">min</span>
+    </div>
+    <label>Where</label><input id="ev-loc" placeholder="Terminal 2 · Gate 22">
+    <label>Notes</label><textarea id="ev-note"></textarea>
+  </div>
+  <p class="sublbl">Who is on this</p>
+  <div class="whopick" id="ev-who"></div>
+  <p class="hint" id="ev-whohint"></p>
+  <p class="sublbl">Checklist for this event</p>
+  <div id="ev-cl"></div>
+  <p class="warn" id="ev-warn" style="display:none"></p>
+  <div class="row">
+    <button class="btn pri" id="ev-save">Save</button>
+    <button class="btn ghost" data-close>Cancel</button>
+    <div style="flex:1"></div>
+    <button class="btn ghost" id="ev-dup">Copy to next day</button>
+    <button class="btn danger" id="ev-del">Delete</button>
+  </div>
+</div></div>
+
+<div class="veil" id="v-person"><div class="card">
+  <h3 id="p-title">Add someone</h3>
+  <div class="maker" style="margin-top:13px">
+    <canvas id="p-canvas" width="220" height="220"></canvas>
+    <div style="min-width:0">
+      <input id="p-name" maxlength="18" placeholder="Name"
+        style="width:100%;background:var(--panel-2);border:1px solid var(--line);border-radius:9px;padding:9px 11px;outline:none;font-weight:600">
+      <p class="sublbl">skin</p><div class="picker" id="p-skin"></div>
+      <p class="sublbl">hair</p><div class="picker" id="p-hair"></div>
+      <p class="sublbl">hair colour</p><div class="picker" id="p-hcol"></div>
+      <p class="sublbl">extras &amp; shirt</p><div class="picker" id="p-extra"></div>
+      <div class="row"><button class="btn sm" id="p-random">🎲 Surprise me</button></div>
+    </div>
+  </div>
+  <div class="row">
+    <button class="btn pri" id="p-save">Save</button>
+    <button class="btn ghost" data-close>Cancel</button>
+    <div style="flex:1"></div>
+    <button class="btn danger" id="p-del">Remove</button>
+  </div>
+</div></div>
+
+<div class="veil" id="v-dates"><div class="card">
+  <h3>Trip dates</h3>
+  <div class="frm"><label>From</label><input type="date" id="d-from">
+    <label>To</label><input type="date" id="d-to"></div>
+  <p class="hint" id="d-len"></p>
+  <div class="row"><button class="btn pri" id="d-save">Set</button>
+    <button class="btn ghost" data-close>Cancel</button></div>
+</div></div>
+
+<div class="veil" id="v-trips"><div class="card">
+  <h3>Your trips</h3>
+  <div id="trip-list" style="margin-top:11px"></div>
+  <div class="row"><button class="btn pri" id="t-new">＋ New trip</button>
+    <button class="btn ghost" data-close>Close</button></div>
+</div></div>
+
+<div class="veil" id="v-io"><div class="card">
+  <h3>Export &amp; import</h3>
+  <p>Stored in this browser only.</p>
+  <div class="row">
+    <button class="btn" id="io-json">Download backup</button>
+    <button class="btn" id="io-load">Load backup</button>
+    <button class="btn" id="io-ics">Export .ics</button>
+    <button class="btn" id="io-text">Copy as text</button>
+    <input type="file" id="io-file" accept=".json" style="display:none">
+  </div>
+  <p class="sublbl">As a picture or a diagram</p>
+  <div class="row" style="margin-top:0">
+    <button class="btn" id="io-ascii">ASCII timeline</button>
+    <button class="btn" id="io-png">Download PNG</button>
+    <button class="btn" id="io-svg">Download SVG</button>
+  </div>
+  <div id="io-preview" style="display:none;margin-top:12px">
+    <pre id="io-pre" style="background:var(--panel-2);border:1px solid var(--line);border-radius:10px;
+      padding:12px;overflow:auto;max-height:300px;font-size:11.5px;line-height:1.45;
+      font-family:ui-monospace,'SF Mono',Menlo,monospace;white-space:pre"></pre>
+    <div class="row" style="margin-top:8px">
+      <button class="btn sm" id="io-ascii-copy">Copy</button>
+      <button class="btn sm ghost" id="io-ascii-dl">Download .txt</button>
+      <label class="hint" style="margin:0;display:flex;gap:6px;align-items:center">
+        <input type="checkbox" id="io-ascii-wide" style="width:auto"> wide (100 cols)</label>
+    </div>
+  </div>
+  <div class="row"><button class="btn ghost" data-close>Close</button></div>
+</div></div>
+
+<div class="toast" id="toast"><span id="toast-t"></span><button id="toast-a" style="display:none"></button></div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = t => String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const pad2 = n => String(n).padStart(2,'0');
+const TAU = Math.PI * 2;
+const pick = a => a[(Math.random()*a.length)|0];
+
+const dayKey = d => d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
+const fromKey = k => { const [y,m,d] = k.split('-').map(Number); return new Date(y, m-1, d); };
+const addDays = (k,n) => { const d = fromKey(k); d.setDate(d.getDate()+n); return dayKey(d); };
+const daysBetween = (a,b) => Math.round((fromKey(b)-fromKey(a))/86400000);
+const fmtLong = k => fromKey(k).toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'});
+const fmtShort = k => fromKey(k).toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'});
+const hhmm = m => pad2(Math.floor(m/60)%24)+':'+pad2(m%60);
+const durText = m => m<60 ? m+' min' : (m%60===0 ? (m/60)+' h' : Math.floor(m/60)+' h '+(m%60)+' min');
+
+const KINDS = {
+  flight:{icon:'✈️',label:'Flight',col:'#38bdf8',def:150},
+  train:{icon:'🚆',label:'Train',col:'#2dd4bf',def:120},
+  drive:{icon:'🚗',label:'Drive',col:'#2dd4bf',def:90},
+  hotel:{icon:'🏨',label:'Check in',col:'#a78bfa',def:30},
+  museum:{icon:'🏛',label:'Museum',col:'#fbbf24',def:120},
+  food:{icon:'🍽',label:'Food',col:'#f472b6',def:90},
+  walk:{icon:'🚶',label:'Walk',col:'#4ade80',def:60},
+  event:{icon:'🎟',label:'Event',col:'#f472b6',def:120},
+  rest:{icon:'😴',label:'Downtime',col:'#94a3b8',def:60},
+  other:{icon:'📍',label:'Other',col:'#94a3b8',def:60}
+};
+
+/* ============================================================
+   people — parts-based portraits drawn on canvas
+   ============================================================ */
+const SKINS = ['#f2d3b8','#e5b993','#c98d63','#a5673f','#7a4a2b','#4e2f1c'];
+const HAIRS = [{id:'short',name:'short'},{id:'long',name:'long'},{id:'bun',name:'bun'},
+  {id:'curly',name:'curly'},{id:'buzz',name:'buzz'},{id:'bald',name:'none'}];
+const HCOLS = ['#2b2118','#5b3a24','#a5673f','#d8a657','#c9c4c0','#e0655a','#6b7fd0'];
+const EXTRAS = [{id:'none',name:'plain'},{id:'glasses',name:'glasses'},{id:'shades',name:'shades'},
+  {id:'beard',name:'beard'},{id:'hat',name:'hat'}];
+const SHIRTS = ['#38bdf8','#f472b6','#fbbf24','#4ade80','#a78bfa','#2dd4bf','#f87171'];
+
+function shade(hex, amt) {
+  const n = parseInt(hex.slice(1),16);
+  const c = [(n>>16)&255,(n>>8)&255,n&255].map(v => Math.max(0,Math.min(255,v+amt)));
+  return 'rgb(' + c.join(',') + ')';
+}
+function drawFace(ctx, size, p) {
+  const s = size, R = s*0.28;
+  ctx.clearRect(0,0,s,s);
+  ctx.save();
+  ctx.translate(s/2, s/2 - s*0.02);
+
+  ctx.fillStyle = p.shirt || SHIRTS[0];                       // shoulders
+  ctx.beginPath(); ctx.ellipse(0, R*2.0, R*1.55, R*1.05, 0, Math.PI, 0); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.13)';
+  ctx.beginPath(); ctx.ellipse(0, R*2.0, R*0.44, R*0.52, 0, Math.PI, 0); ctx.fill();
+
+  const skin = p.skin || SKINS[0], hc = p.hcol || HCOLS[0];
+  ctx.fillStyle = shade(skin,-10);
+  ctx.beginPath(); ctx.ellipse(0, R*1.26, R*0.34, R*0.36, 0, 0, TAU); ctx.fill();   // neck
+
+  if (p.hair === 'long') { ctx.fillStyle = hc;
+    ctx.beginPath(); ctx.ellipse(0, R*0.3, R*1.18, R*1.36, 0, 0, TAU); ctx.fill(); }
+  if (p.hair === 'bun') { ctx.fillStyle = hc;
+    ctx.beginPath(); ctx.arc(0, -R*1.16, R*0.35, 0, TAU); ctx.fill(); }
+
+  const g = ctx.createLinearGradient(0,-R,0,R);
+  g.addColorStop(0, skin); g.addColorStop(1, shade(skin,-16));
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.ellipse(0, 0, R*0.93, R, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = shade(skin,-8);
+  [-1,1].forEach(k => { ctx.beginPath(); ctx.ellipse(k*R*0.93, R*0.12, R*0.13, R*0.2, 0, 0, TAU); ctx.fill(); });
+
+  ctx.fillStyle = hc;
+  if (p.hair === 'short' || p.hair === 'long' || p.hair === 'bun') {
+    ctx.beginPath();
+    ctx.ellipse(0, -R*0.32, R*0.96, R*0.74, 0, Math.PI, 0);
+    ctx.lineTo(R*0.96, -R*0.2);
+    ctx.quadraticCurveTo(R*0.35, -R*0.52, -R*0.25, -R*0.3);
+    ctx.quadraticCurveTo(-R*0.72, -R*0.18, -R*0.96, -R*0.32);
+    ctx.closePath(); ctx.fill();
+  } else if (p.hair === 'curly') {
+    for (let i=0;i<9;i++) { const a = Math.PI + (i/8)*Math.PI;
+      ctx.beginPath(); ctx.arc(Math.cos(a)*R*0.8, Math.sin(a)*R*0.72 - R*0.08, R*0.3, 0, TAU); ctx.fill(); }
+  } else if (p.hair === 'buzz') {
+    ctx.globalAlpha = .8;
+    ctx.beginPath(); ctx.ellipse(0, -R*0.28, R*0.91, R*0.64, 0, Math.PI, 0); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  const ey = -R*0.04, ex = R*0.36;
+  if (p.extra === 'shades') {
+    ctx.fillStyle = '#171b21';
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(-R*0.8, ey-R*0.23, R*1.6, R*0.46, R*0.16);
+    else ctx.rect(-R*0.8, ey-R*0.23, R*1.6, R*0.46);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.18)';
+    ctx.beginPath(); ctx.ellipse(-R*0.42, ey-R*0.06, R*0.14, R*0.06, -0.4, 0, TAU); ctx.fill();
+  } else {
+    [-1,1].forEach(k => {
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.ellipse(k*ex, ey, R*0.17, R*0.13, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#2a2018';
+      ctx.beginPath(); ctx.arc(k*ex + R*0.02, ey, R*0.08, 0, TAU); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.9)';
+      ctx.beginPath(); ctx.arc(k*ex + R*0.05, ey - R*0.04, R*0.03, 0, TAU); ctx.fill();
+    });
+    ctx.strokeStyle = hc; ctx.lineWidth = R*0.08; ctx.lineCap = 'round';
+    [-1,1].forEach(k => { ctx.beginPath();
+      ctx.moveTo(k*ex - R*0.17, ey - R*0.3); ctx.lineTo(k*ex + R*0.17, ey - R*0.34); ctx.stroke(); });
+    if (p.extra === 'glasses') {
+      ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = R*0.06;
+      [-1,1].forEach(k => { ctx.beginPath(); ctx.arc(k*ex, ey, R*0.26, 0, TAU); ctx.stroke(); });
+      ctx.beginPath(); ctx.moveTo(-R*0.1, ey); ctx.lineTo(R*0.1, ey); ctx.stroke();
+    }
+  }
+
+  ctx.strokeStyle = shade(skin,-34); ctx.lineWidth = R*0.06; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(0, ey+R*0.14); ctx.lineTo(-R*0.05, ey+R*0.33); ctx.stroke();
+  if (p.extra === 'beard') {
+    ctx.fillStyle = hc;
+    ctx.beginPath(); ctx.ellipse(0, R*0.4, R*0.74, R*0.58, 0, 0, Math.PI); ctx.fill();
+    ctx.fillStyle = '#a4544f';
+    ctx.beginPath(); ctx.ellipse(0, R*0.46, R*0.19, R*0.08, 0, 0, TAU); ctx.fill();
+  } else {
+    ctx.strokeStyle = '#a4544f'; ctx.lineWidth = R*0.08;
+    ctx.beginPath(); ctx.moveTo(-R*0.22, R*0.45);
+    ctx.quadraticCurveTo(0, R*0.63, R*0.22, R*0.45); ctx.stroke();
+  }
+  if (p.extra === 'hat') {
+    ctx.fillStyle = p.shirt || SHIRTS[0];
+    ctx.beginPath(); ctx.ellipse(0, -R*0.6, R*1.18, R*0.22, 0, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0, -R*0.84, R*0.74, R*0.42, 0, Math.PI, 0); ctx.fill();
+  }
+  ctx.restore();
+}
+const avCache = new Map();
+function avatarURL(p) {
+  const key = [p.skin,p.hair,p.hcol,p.extra,p.shirt].join('|');
+  if (avCache.has(key)) return avCache.get(key);
+  const c = document.createElement('canvas');
+  c.width = c.height = 96;
+  drawFace(c.getContext('2d'), 96, p);
+  const url = c.toDataURL();
+  avCache.set(key, url);
+  return url;
+}
+const avImg = (p, cls) => '<img class="av ' + (cls||'') + '" src="' + avatarURL(p) +
+  '" alt="' + esc(p.name) + '" title="' + esc(p.name) + '">';
+
+/* ============================================================
+   state
+   ============================================================ */
+const KEY = 'itinerary.v2';
+let DB = { trips: [], cur: null };
+let hourMode = 'day', focusDay = null, editing = null, editingPerson = null, draft = null;
+
+function load() {
+  try { const raw = localStorage.getItem(KEY); if (raw) { const i = JSON.parse(raw);
+    DB.trips = i.trips || []; DB.cur = i.cur || null; } } catch (e) {}
+  DB.trips.forEach(t => {
+    t.events = t.events || []; t.people = t.people || []; t.checks = t.checks || [];
+    t.events.forEach(e => { e.checks = e.checks || []; if (e.who === undefined) e.who = null; });
+  });
+}
+let saveT = null;
+const save = () => { clearTimeout(saveT); saveT = setTimeout(() => {
+  try { localStorage.setItem(KEY, JSON.stringify(DB)); } catch (e) { toast('Could not save'); } }, 150); };
+const trip = () => DB.trips.find(t => t.id === DB.cur) || DB.trips[0] || null;
+const evEnd = e => e.start + e.dur;
+// null means everyone, so the common case needs no clicking and new people join automatically
+const whoOf = (t, e) => e.who === null ? t.people : t.people.filter(p => e.who.includes(p.id));
+
+function newTrip(name, from, days) {
+  const t = { id:uid(), name:name||'New trip', from:from||dayKey(new Date()),
+    to:addDays(from||dayKey(new Date()), (days||4)-1), events:[], people:[], checks:[], created:Date.now() };
+  DB.trips.unshift(t); DB.cur = t.id; save(); return t;
+}
+function addEvent(e) {
+  const t = trip(); if (!t) return null;
+  const ev = Object.assign({ id:uid(), kind:'other', name:'Untitled', day:t.from, start:9*60, dur:60,
+    loc:'', note:'', who:null, checks:[] }, e);
+  t.events.push(ev); save(); return ev;
+}
+function tripDays(t) {
+  const out = []; let k = t.from;
+  const n = Math.max(1, daysBetween(t.from, t.to) + 1);
+  for (let i=0;i<n;i++) { out.push(k); k = addDays(k,1); }
+  return out;
+}
+// things starting within a quarter hour of each other share one point on the line
+function slotsFor(list) {
+  const sorted = list.slice().sort((a,b) => a.start - b.start || a.name.localeCompare(b.name));
+  const slots = [];
+  for (const e of sorted) {
+    const last = slots[slots.length-1];
+    if (last && Math.abs(last.start - e.start) <= 15) { last.events.push(e); last.start = Math.min(last.start, e.start); }
+    else slots.push({ start: e.start, events: [e] });
+  }
+  return slots;
+}
+
+/* ============================================================
+   the flow
+   ============================================================ */
+function render() {
+  const t = trip();
+  $('tname').value = t ? t.name : '';
+  renderCrew(); renderGlobal();
+  if (!t) { $('flow').innerHTML = '<p class="empty">No trip yet — make one from the Trips menu.</p>';
+    $('tmeta').textContent = ''; $('daylab').textContent = ''; return; }
+  const days = tripDays(t);
+  $('tmeta').textContent = fmtShort(t.from) + ' → ' + fmtShort(t.to) + ' · ' + days.length + ' days · ' +
+    t.events.length + ' events' + (t.people.length ? ' · ' + t.people.length + ' people' : '');
+  $('daylab').textContent = focusDay ? fmtLong(focusDay) : 'whole trip';
+
+  const shown = focusDay ? [focusDay] : days;
+  let h = '<div class="spine"></div>';
+  let any = false;
+
+  for (const k of shown) {
+    const list = t.events.filter(e => e.day === k);
+    h += '<div class="daymark"><span class="dot"></span><span class="pill">' + esc(fmtLong(k)) +
+      '<span class="n">' + (list.length ? list.length + (list.length===1?' event':' events') : 'free day') +
+      '</span></span></div>';
+    if (!list.length) continue;
+    any = true;
+    const slots = slotsFor(list);
+    let prevEnd = null;
+    for (const s of slots) {
+      if (hourMode === 'all') {
+        const from = prevEnd === null ? 0 : Math.floor(prevEnd/60) + 1;
+        for (let hh = from; hh < Math.floor(s.start/60); hh++)
+          h += '<div class="tick"><span class="h">' + pad2(hh) + ':00</span><span class="l"></span></div>';
+      } else if (prevEnd !== null && s.start - prevEnd >= 45) {
+        h += '<div class="gap">↕ ' + durText(s.start - prevEnd) + ' free</div>';
+      }
+      const col = (KINDS[s.events[0].kind]||KINDS.other).col;
+      h += '<div class="slot"><span class="time">' + hhmm(s.start) + '</span>' +
+        '<span class="node" style="background:' + col + '"></span>';
+      if (s.events.length > 1) h += '<div class="par">' + s.events.length + ' at the same time</div>';
+      h += '<div class="cards">';
+      for (const e of s.events) {
+        const K = KINDS[e.kind] || KINDS.other;
+        const people = whoOf(t, e);
+        const done = e.checks.filter(c => c.done).length;
+        const left = e.checks.filter(c => !c.done).slice(0,3).map(c => c.text).join(', ');
+        h += '<div class="card-ev" data-e="' + e.id + '" style="border-left-color:' + K.col + '">' +
+          '<div class="top"><span class="ttl">' + K.icon + ' ' + esc(e.name) + '</span>' +
+          '<span class="who">' + people.slice(0,4).map(p => avImg(p,'sm')).join('') +
+          (people.length>4 ? '<span class="clcount">+' + (people.length-4) + '</span>' : '') + '</span></div>' +
+          '<div class="sub">' + hhmm(e.start) + '–' + hhmm(evEnd(e)) + (evEnd(e)>=1440?' +1':'') +
+            ' · ' + durText(e.dur) + (e.loc ? ' · ' + esc(e.loc) : '') +
+            (e.who !== null && t.people.length ? ' · ' + people.length + ' of ' + t.people.length : '') + '</div>' +
+          (e.note ? '<div class="sub">' + esc(e.note) + '</div>' : '') +
+          (e.checks.length ? '<div class="sub">☑ ' + done + '/' + e.checks.length +
+            (left ? ' · ' + esc(left) : ' ready') + '</div>' : '') +
+          '</div>';
+      }
+      h += '</div></div>';
+      prevEnd = Math.max.apply(null, s.events.map(evEnd));
+    }
+    if (hourMode === 'all' && prevEnd !== null)
+      for (let hh = Math.floor(prevEnd/60)+1; hh < 24; hh++)
+        h += '<div class="tick"><span class="h">' + pad2(hh) + ':00</span><span class="l"></span></div>';
+  }
+  $('flow').innerHTML = h + (any ? '' :
+    '<p class="empty">Nothing on the line yet.<br>Add a flight, a check-in, a museum.</p>');
+  $('flow').querySelectorAll('[data-e]').forEach(el => el.addEventListener('click', () =>
+    openEvent(t.events.find(x => x.id === el.dataset.e))));
+}
+
+function renderCrew() {
+  const t = trip(), box = $('crew');
+  if (!t) { box.innerHTML = ''; return; }
+  box.innerHTML = t.people.map(p =>
+    '<img class="av" src="' + avatarURL(p) + '" title="' + esc(p.name) + '" data-p="' + p.id + '">').join('') +
+    '<button class="addp" id="p-new" title="Add someone">＋</button>';
+  box.querySelectorAll('[data-p]').forEach(el => el.addEventListener('click', () =>
+    openPerson(t.people.find(p => p.id === el.dataset.p))));
+  $('p-new').addEventListener('click', () => openPerson(null));
+}
+
+function renderGlobal() {
+  const t = trip(), box = $('glist');
+  if (!t) { box.innerHTML = ''; $('gcount').textContent = ''; $('mini-n').textContent = ''; return; }
+  const done = t.checks.filter(c => c.done).length;
+  const left = t.checks.length - done;
+  const impLeft = t.checks.filter(c => !c.done && c.important).length;
+  $('gcount').textContent = t.checks.length ? done + '/' + t.checks.length : '';
+  // the rail shows only a number, coloured if something important is still open
+  $('mini-n').textContent = t.checks.length ? String(left) : '·';
+  $('mini-n').style.color = impLeft ? 'var(--amber)' : left ? 'var(--ink)' : 'var(--green)';
+  $('minihead').title = t.checks.length
+    ? left + ' left of ' + t.checks.length + (impLeft ? ' · ' + impLeft + ' important' : '') + ' — click to expand'
+    : 'Trip checklist — click to expand';
+  $('f-checks').textContent = t.checks.length
+    ? (left ? '☐ ' + left + ' left' + (impLeft ? ' · ★' + impLeft : '') : '☑ all done') : '';
+  $('f-checks').style.color = impLeft ? 'var(--amber)' : 'var(--faint)';
+  const sorted = t.checks.slice().sort((a,b) => (a.done - b.done) || ((b.important?1:0) - (a.important?1:0)));
+  box.innerHTML = sorted.length ? sorted.map(c =>
+    '<div class="gi' + (c.done?' done':'') + (c.important && !c.done ? ' imp':'') + '">' +
+    '<button class="bx" data-t="' + c.id + '" style="width:17px;height:17px;border-radius:5px;flex:none;' +
+      'border:2px solid ' + (c.done?'#4ade80':'#3c4a58') + ';background:' + (c.done?'#4ade80':'none') +
+      ';cursor:pointer"></button>' +
+    '<span class="tx">' + esc(c.text) + '</span>' +
+    '<button class="st' + (c.important?' on':'') + '" data-i="' + c.id + '" title="Important">' +
+      (c.important?'★':'☆') + '</button>' +
+    '<button class="st" data-x="' + c.id + '" title="Delete">✕</button></div>').join('')
+    : '<p class="hint" style="padding:10px 8px">Nothing yet. Visas, adapters, the good camera — whatever ' +
+      'belongs to the trip rather than one event.</p>';
+  box.querySelectorAll('.gi').forEach(el => {
+    const id = (el.querySelector('[data-t]')||{dataset:{}}).dataset.t;
+    const c = t.checks.find(x => x.id === id);
+    if (c) el.title = (c.important ? '★ ' : '') + c.text + (c.done ? ' — done' : '');
+  });
+  box.querySelectorAll('[data-t]').forEach(b => b.addEventListener('click', () => {
+    const c = t.checks.find(x => x.id === b.dataset.t); c.done = !c.done; save(); renderGlobal(); }));
+  box.querySelectorAll('[data-i]').forEach(b => b.addEventListener('click', () => {
+    const c = t.checks.find(x => x.id === b.dataset.i); c.important = !c.important; save(); renderGlobal(); }));
+  box.querySelectorAll('[data-x]').forEach(b => b.addEventListener('click', () => {
+    const i = t.checks.findIndex(x => x.id === b.dataset.x);
+    const gone = t.checks.splice(i,1)[0]; save(); renderGlobal();
+    toast('Removed “' + gone.text + '”', 'Undo', () => { t.checks.splice(i,0,gone); save(); renderGlobal(); }); }));
+}
+function addGlobal(text) {
+  const t = trip(); if (!t) return;
+  for (let part of String(text).split(',')) {
+    let s = part.trim(); if (!s) continue;
+    let important = false;
+    if (/!\s*$/.test(s)) { important = true; s = s.replace(/!\s*$/,'').trim(); }   // trailing ! = important
+    if (s) t.checks.push({ id:uid(), text:s, done:false, important });
+  }
+  save(); renderGlobal();
+}
+$('g-add').addEventListener('click', () => { addGlobal($('gnew').value); $('gnew').value = ''; $('gnew').focus(); });
+$('gnew').addEventListener('keydown', e => { if (e.key === 'Enter') $('g-add').click(); });
+let mini = false;
+function setMini(v) {
+  mini = v;
+  $('main').classList.toggle('mini', mini);
+  try { localStorage.setItem('itin-mini', mini ? '1' : ''); } catch (e) {}
+}
+$('g-mini').addEventListener('click', () => setMini(true));
+$('minihead').addEventListener('click', () => setMini(false));
+
+let focusMode = false;
+function setFocus(v) {
+  focusMode = v;
+  document.body.classList.toggle('focus', focusMode);
+  $('b-focus').classList.toggle('on', focusMode);
+  if (focusMode) { $('aside').classList.remove('open'); $('g-close').style.display = 'none'; }
+  renderFocusBar();
+}
+function renderFocusBar() {
+  const t = trip();
+  $('f-day').textContent = !t ? '' : (focusDay ? fmtLong(focusDay) : t.name + ' · whole trip');
+}
+$('b-focus').addEventListener('click', () => setFocus(!focusMode));
+$('f-exit').addEventListener('click', () => setFocus(false));
+$('f-prev').addEventListener('click', () => stepDay(-1));
+$('f-next').addEventListener('click', () => stepDay(1));
+
+$('b-checks').addEventListener('click', () => {
+  if (focusMode) setFocus(false);
+  if (mini) { setMini(false); return; }
+  const open = $('aside').classList.toggle('open');
+  $('g-close').style.display = open ? '' : 'none';
+});
+$('g-close').addEventListener('click', () => {
+  $('aside').classList.remove('open'); $('g-close').style.display = 'none'; });
+
+/* ============================================================
+   the event editor
+   ============================================================ */
+let kindSel = 'other', whoSel = null, checkDraft = [];
+function openEvent(e, seed) {
+  const t = trip(); if (!t) return;
+  editing = e || null;
+  const base = e || Object.assign({ kind:'other', name:'', day: focusDay || t.from, start:9*60, dur:60,
+    loc:'', note:'', who:null, checks:[] }, seed||{});
+  $('ev-title').textContent = e ? 'Edit event' : 'New event';
+  $('ev-name').value = base.name;
+  $('ev-date').value = base.day;
+  $('ev-start').value = hhmm(base.start);
+  $('ev-hrs').value = Math.floor(base.dur/60);
+  $('ev-min').value = base.dur % 60;
+  $('ev-loc').value = base.loc || '';
+  $('ev-note').value = base.note || '';
+  $('ev-del').style.display = e ? '' : 'none';
+  $('ev-dup').style.display = e ? '' : 'none';
+  whoSel = base.who === null ? null : base.who.slice();
+  checkDraft = (base.checks||[]).map(c => Object.assign({}, c));
+  pickKind(base.kind); renderWho(); renderEvChecks();
+  $('ev-warn').style.display = 'none';
+  open('v-ev');
+  setTimeout(() => $('ev-name').focus(), 40);
+}
+function pickKind(k) {
+  kindSel = k;
+  $('ev-kinds').innerHTML = Object.keys(KINDS).map(id => {
+    const K = KINDS[id];
+    return '<button data-k="' + id + '" class="' + (id===k?'on':'') + '" style="color:' +
+      (id===k?K.col:'var(--dim)') + '">' + K.icon + ' ' + K.label + '</button>';
+  }).join('');
+  $('ev-kinds').querySelectorAll('[data-k]').forEach(b => b.addEventListener('click', () => {
+    const was = kindSel; pickKind(b.dataset.k);
+    if (!editing && (+$('ev-hrs').value*60 + +$('ev-min').value) === (KINDS[was]||{}).def) {
+      const d = KINDS[b.dataset.k].def;
+      $('ev-hrs').value = Math.floor(d/60); $('ev-min').value = d % 60;
+    }
+  }));
+}
+function renderWho() {
+  const t = trip(), box = $('ev-who');
+  if (!t.people.length) {
+    box.innerHTML = '<span class="hint" style="margin:0">Nobody on the trip yet — add people with ＋ in the header.</span>';
+    $('ev-whohint').textContent = ''; return;
+  }
+  box.innerHTML = t.people.map(p => {
+    const on = whoSel === null || whoSel.indexOf(p.id) >= 0;
+    return '<span class="p' + (on?' on':'') + '" data-w="' + p.id + '">' +
+      '<img class="av' + (on?'':' off') + '" src="' + avatarURL(p) + '">' +
+      esc(p.name.split(' ')[0]) + '</span>';
+  }).join('') + '<button class="btn sm ghost" id="w-all">everyone</button>';
+  box.querySelectorAll('[data-w]').forEach(el => el.addEventListener('click', () => {
+    if (whoSel === null) whoSel = t.people.map(p => p.id);       // first click narrows from everyone
+    const i = whoSel.indexOf(el.dataset.w);
+    if (i >= 0) whoSel.splice(i,1); else whoSel.push(el.dataset.w);
+    if (whoSel.length === t.people.length) whoSel = null;
+    renderWho();
+  }));
+  $('w-all').addEventListener('click', () => { whoSel = null; renderWho(); });
+  $('ev-whohint').textContent = whoSel === null
+    ? 'Everyone on the trip, including anyone added later.'
+    : whoSel.length + ' of ' + t.people.length + ' selected.';
+}
+function renderEvChecks() {
+  const box = $('ev-cl');
+  box.innerHTML = '<div class="cl">' + checkDraft.map(c =>
+    '<div class="ci' + (c.done?' done':'') + '">' +
+    '<button class="bx" data-t="' + c.id + '"></button>' +
+    '<span class="tx">' + esc(c.text) + '</span>' +
+    '<button class="x" data-x="' + c.id + '">✕</button></div>').join('') +
+    '<div class="add"><input id="ec-new" placeholder="Something to bring or do — commas add several"' +
+    ' enterkeyhint="done"><button class="btn sm" id="ec-add">＋</button></div></div>';
+  box.querySelectorAll('[data-t]').forEach(b => b.addEventListener('click', () => {
+    const c = checkDraft.find(x => x.id === b.dataset.t); c.done = !c.done; renderEvChecks(); }));
+  box.querySelectorAll('[data-x]').forEach(b => b.addEventListener('click', () => {
+    checkDraft = checkDraft.filter(x => x.id !== b.dataset.x); renderEvChecks(); }));
+  const add = () => {
+    const v = $('ec-new').value;
+    v.split(',').forEach(s => { if (s.trim()) checkDraft.push({ id:uid(), text:s.trim(), done:false }); });
+    if (v.trim()) { renderEvChecks(); setTimeout(() => $('ec-new').focus(), 0); }
+  };
+  $('ec-add').addEventListener('click', add);
+  $('ec-new').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+}
+function readEv() {
+  const parts = ($('ev-start').value || '09:00').split(':').map(Number);
+  return { kind:kindSel, name:$('ev-name').value.trim() || KINDS[kindSel].label,
+    day:$('ev-date').value || trip().from, start:parts[0]*60 + parts[1],
+    dur:Math.max(5, (+$('ev-hrs').value||0)*60 + (+$('ev-min').value||0)),
+    loc:$('ev-loc').value.trim(), note:$('ev-note').value.trim(),
+    who: whoSel === null ? null : whoSel.slice(),
+    checks: checkDraft.map(c => Object.assign({}, c)) };
+}
+$('ev-save').addEventListener('click', () => {
+  const t = trip(); if (!t) return;
+  const d = readEv();
+  if (editing) Object.assign(editing, d); else addEvent(d);
+  if (d.day < t.from) t.from = d.day;
+  if (d.day > t.to) t.to = d.day;
+  save(); close('v-ev'); render();
+});
+$('ev-del').addEventListener('click', () => {
+  const t = trip(), gone = editing, i = t.events.indexOf(editing);
+  t.events.splice(i,1); save(); close('v-ev'); render();
+  toast('Deleted “' + gone.name + '”', 'Undo', () => { t.events.push(gone); save(); render(); });
+});
+$('ev-dup').addEventListener('click', () => {
+  const d = readEv();
+  const ev = addEvent(Object.assign({}, d, { day: addDays(d.day, 1) }));
+  close('v-ev'); render();
+  toast('Copied to ' + fmtShort(ev.day), 'Open it', () => openEvent(ev));
+});
+['ev-date','ev-start','ev-hrs','ev-min'].forEach(id => $(id).addEventListener('input', () => {
+  const t = trip(); if (!t) return;
+  const d = readEv();
+  const hit = t.events.filter(e => e !== editing && e.day === d.day &&
+    e.start < d.start + d.dur && d.start < evEnd(e));
+  const w = $('ev-warn');
+  if (hit.length) { w.style.display = '';
+    w.textContent = 'Also happening then: ' + hit.map(e => e.name + ' (' + hhmm(e.start) + ')').join(', ') +
+      ' — they will sit side by side on the line.'; }
+  else w.style.display = 'none';
+}));
+
+/* ============================================================
+   the person maker
+   ============================================================ */
+function openPerson(p) {
+  const t = trip(); if (!t) return;
+  editingPerson = p || null;
+  draft = p ? Object.assign({}, p) : { id:uid(), name:'', skin:SKINS[0], hair:'short',
+    hcol:HCOLS[0], extra:'none', shirt:SHIRTS[t.people.length % SHIRTS.length] };
+  $('p-title').textContent = p ? 'Edit person' : 'Add someone';
+  $('p-name').value = draft.name;
+  $('p-del').style.display = p ? '' : 'none';
+  paintPerson(); open('v-person');
+  setTimeout(() => $('p-name').focus(), 40);
+}
+function paintPerson() {
+  drawFace($('p-canvas').getContext('2d'), 220, draft);
+  const sw = (arr, key) => arr.map(v =>
+    '<button class="sw ' + (draft[key]===v?'on':'') + '" data-k="' + key + '" data-v="' + v +
+    '" style="background:' + v + '"></button>').join('');
+  $('p-skin').innerHTML = sw(SKINS,'skin');
+  $('p-hcol').innerHTML = sw(HCOLS,'hcol');
+  $('p-hair').innerHTML = HAIRS.map(x =>
+    '<button class="' + (draft.hair===x.id?'on':'') + '" data-k="hair" data-v="' + x.id + '">' + x.name + '</button>').join('');
+  $('p-extra').innerHTML = EXTRAS.map(x =>
+    '<button class="' + (draft.extra===x.id?'on':'') + '" data-k="extra" data-v="' + x.id + '">' + x.name + '</button>').join('') +
+    SHIRTS.map(c => '<button class="sw ' + (draft.shirt===c?'on':'') + '" data-k="shirt" data-v="' + c +
+      '" style="background:' + c + '"></button>').join('');
+  document.querySelectorAll('#v-person [data-k]').forEach(b => b.addEventListener('click', () => {
+    draft[b.dataset.k] = b.dataset.v; paintPerson(); }));
+}
+$('p-random').addEventListener('click', () => {
+  draft.skin = pick(SKINS); draft.hair = pick(HAIRS).id; draft.hcol = pick(HCOLS);
+  draft.extra = pick(EXTRAS).id; draft.shirt = pick(SHIRTS);
+  paintPerson();
+});
+$('p-name').addEventListener('input', () => { draft.name = $('p-name').value; });
+$('p-save').addEventListener('click', () => {
+  const t = trip(); if (!t) return;
+  draft.name = (draft.name||'').trim() || 'Traveller';
+  if (editingPerson) Object.assign(editingPerson, draft); else t.people.push(draft);
+  save(); close('v-person'); render();
+});
+$('p-del').addEventListener('click', () => {
+  const t = trip(), i = t.people.indexOf(editingPerson);
+  const gone = t.people.splice(i,1)[0];
+  t.events.forEach(e => { if (e.who) e.who = e.who.filter(id => id !== gone.id); });
+  save(); close('v-person'); render();
+  toast('Removed ' + gone.name, 'Undo', () => { t.people.splice(i,0,gone); save(); render(); });
+});
+
+/* ============================================================
+   chrome
+   ============================================================ */
+const open = id => $(id).classList.add('on');
+const close = id => $(id).classList.remove('on');
+document.querySelectorAll('[data-close]').forEach(b =>
+  b.addEventListener('click', () => b.closest('.veil').classList.remove('on')));
+document.querySelectorAll('.veil').forEach(v =>
+  v.addEventListener('click', e => { if (e.target === v) v.classList.remove('on'); }));
+
+$('b-add').addEventListener('click', () => openEvent(null));
+$('fab').addEventListener('click', () => openEvent(null));
+document.querySelectorAll('#hourseg button').forEach(b => b.addEventListener('click', () => {
+  hourMode = b.dataset.h;
+  document.querySelectorAll('#hourseg button').forEach(x => x.classList.toggle('on', x === b));
+  render();
+}));
+function stepDay(dir) {
+  const t = trip(); if (!t) return;
+  const days = tripDays(t);
+  if (!focusDay) { focusDay = dir > 0 ? days[0] : days[days.length-1]; }
+  else {
+    const i = days.indexOf(focusDay) + dir;
+    focusDay = (i < 0 || i >= days.length) ? null : days[i];   // off either end returns to the whole trip
+  }
+  render();
+  renderFocusBar();
+  $('flowwrap').scrollTop = 0;
+}
+$('b-prev').addEventListener('click', () => stepDay(-1));
+$('b-next').addEventListener('click', () => stepDay(1));
+$('daylab').addEventListener('click', () => { focusDay = null; render(); });
+$('daylab').style.cursor = 'pointer';
+$('tname').addEventListener('input', () => { const t = trip(); if (t) { t.name = $('tname').value; save(); } });
+
+$('b-dates').addEventListener('click', () => {
+  const t = trip(); if (!t) return;
+  $('d-from').value = t.from; $('d-to').value = t.to; dlen(); open('v-dates');
+});
+function dlen() {
+  const a = $('d-from').value, b = $('d-to').value;
+  if (!a || !b) return;
+  const n = daysBetween(a,b)+1;
+  $('d-len').textContent = n > 0 ? n + ' day' + (n===1?'':'s') : 'those are the wrong way round';
+}
+['d-from','d-to'].forEach(id => $(id).addEventListener('input', dlen));
+$('d-save').addEventListener('click', () => {
+  const t = trip(), a = $('d-from').value, b = $('d-to').value;
+  if (!a || !b || daysBetween(a,b) < 0) { toast('Those dates are the wrong way round'); return; }
+  t.from = a; t.to = b; focusDay = null; save(); close('v-dates'); render();
+});
+
+$('b-trips').addEventListener('click', () => {
+  $('trip-list').innerHTML = DB.trips.length ? DB.trips.map(t =>
+    '<div class="gi" data-t="' + t.id + '" style="cursor:pointer">' +
+    '<span class="tx"><b>' + esc(t.name) + '</b><br><span class="hint" style="margin:0">' +
+    fmtShort(t.from) + ' → ' + fmtShort(t.to) + ' · ' + t.events.length + ' events · ' +
+    t.people.length + ' people</span></span>' +
+    '<button class="st" data-del="' + t.id + '">✕</button></div>').join('')
+    : '<p class="hint">None yet.</p>';
+  $('trip-list').querySelectorAll('[data-t]').forEach(el => el.addEventListener('click', e => {
+    if (e.target.dataset.del) return;
+    DB.cur = el.dataset.t; focusDay = null; save(); render(); close('v-trips'); }));
+  $('trip-list').querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', e => {
+    e.stopPropagation();
+    const i = DB.trips.findIndex(x => x.id === b.dataset.del);
+    const gone = DB.trips.splice(i,1)[0];
+    if (DB.cur === gone.id) DB.cur = (DB.trips[0]||{}).id || null;
+    save(); render(); $('b-trips').click();
+    toast('Removed “' + gone.name + '”', 'Undo', () => { DB.trips.splice(i,0,gone); save(); render(); }); }));
+  open('v-trips');
+});
+$('t-new').addEventListener('click', () => {
+  newTrip('New trip', dayKey(new Date()), 4);
+  focusDay = null; close('v-trips'); render();
+  setTimeout(() => { $('tname').focus(); $('tname').select(); }, 40);
+});
+
+/* export */
+$('b-io').addEventListener('click', () => open('v-io'));
+function download(name, text, mime) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: mime || 'text/plain' }));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+$('io-json').addEventListener('click', () =>
+  download('trip-' + new Date().toISOString().slice(0,10) + '.json', JSON.stringify(DB,null,2), 'application/json'));
+$('io-load').addEventListener('click', () => $('io-file').click());
+$('io-file').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  f.text().then(txt => {
+    try {
+      const inc = JSON.parse(txt);
+      if (!Array.isArray(inc.trips)) throw 0;
+      const have = {}; DB.trips.forEach(t => have[t.id] = 1);
+      const add = inc.trips.filter(t => !have[t.id]);
+      DB.trips.push.apply(DB.trips, add);
+      DB.trips.forEach(t => { t.events = t.events||[]; t.people = t.people||[]; t.checks = t.checks||[];
+        t.events.forEach(ev => { ev.checks = ev.checks||[]; if (ev.who === undefined) ev.who = null; }); });
+      save(); render(); close('v-io');
+      toast(add.length + ' trip' + (add.length===1?'':'s') + ' imported');
+    } catch (err) { toast('That was not a backup from here'); }
+  });
+  e.target.value = '';
+});
+function icsStamp(day, minutes) {
+  const d = fromKey(day); d.setMinutes(d.getMinutes() + minutes);
+  return d.getFullYear()+pad2(d.getMonth()+1)+pad2(d.getDate())+'T'+pad2(d.getHours())+pad2(d.getMinutes())+'00';
+}
+$('io-ics').addEventListener('click', () => {
+  const t = trip(); if (!t) return;
+  const e2 = s => String(s||'').replace(/([,;\\])/g, '\\$1').replace(/\n/g, '\\n');
+  const out = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//termit.dev//Itinerary//EN'];
+  t.events.forEach(e => {
+    const K = KINDS[e.kind] || KINDS.other;
+    const who = whoOf(t,e).map(p => p.name).join(', ');
+    const desc = [e.note, who ? 'With: ' + who : '',
+      e.checks.length ? 'Bring: ' + e.checks.map(c => c.text).join(', ') : ''].filter(Boolean).join('\n');
+    out.push('BEGIN:VEVENT','UID:'+e.id+'@termit.dev',
+      'DTSTART:'+icsStamp(e.day,e.start),'DTEND:'+icsStamp(e.day,evEnd(e)),
+      'SUMMARY:'+e2(K.icon+' '+e.name));
+    if (e.loc) out.push('LOCATION:'+e2(e.loc));
+    if (desc) out.push('DESCRIPTION:'+e2(desc));
+    out.push('END:VEVENT');
+  });
+  out.push('END:VCALENDAR');
+  download((t.name||'trip').replace(/[^\w -]/g,'') + '.ics', out.join('\r\n'), 'text/calendar');
+  close('v-io');
+});
+$('io-text').addEventListener('click', () => {
+  const t = trip(); if (!t) return;
+  let out = t.name + '  (' + fmtShort(t.from) + ' → ' + fmtShort(t.to) + ')\n';
+  if (t.people.length) out += 'Going: ' + t.people.map(p => p.name).join(', ') + '\n';
+  tripDays(t).forEach(k => {
+    const list = t.events.filter(e => e.day === k).sort((a,b) => a.start - b.start);
+    if (!list.length) return;
+    out += '\n' + fmtLong(k) + '\n';
+    list.forEach(e => {
+      out += '  ' + hhmm(e.start) + '–' + hhmm(evEnd(e)) + '  ' + (KINDS[e.kind]||KINDS.other).icon +
+        ' ' + e.name + (e.loc ? '  · ' + e.loc : '') +
+        (e.who !== null ? '  [' + whoOf(t,e).map(p => p.name).join(', ') + ']' : '') + '\n';
+      e.checks.forEach(c => { out += '      ' + (c.done?'[x] ':'[ ] ') + c.text + '\n'; });
+    });
+  });
+  if (t.checks.length) {
+    out += '\nTrip checklist\n';
+    t.checks.forEach(c => { out += '  ' + (c.done?'[x] ':'[ ] ') + (c.important?'★ ':'') + c.text + '\n'; });
+  }
+  if (navigator.clipboard) navigator.clipboard.writeText(out);
+  close('v-io'); toast('Copied');
+});
+
+/* ============================================================
+   ASCII — the same flow, drawn with box characters
+   ============================================================ */
+function asciiTimeline(width) {
+  const t = trip(); if (!t) return '';
+  const W = width || 72;
+  const pad = (s,n) => { s = String(s); return s.length > n ? s.slice(0,n-1)+'…' : s + ' '.repeat(n-s.length); };
+  const L = [];
+  const rule = ch => ch.repeat(W);
+  L.push('┌' + '─'.repeat(W-2) + '┐');
+  const title = t.name + '   ' + fmtShort(t.from) + ' → ' + fmtShort(t.to);
+  L.push('│ ' + pad(title, W-4) + ' │');
+  if (t.people.length) L.push('│ ' + pad('who: ' + t.people.map(p => p.name).join(', '), W-4) + ' │');
+  L.push('└' + '─'.repeat(W-2) + '┘');
+  L.push('');
+
+  const days = tripDays(t);
+  days.forEach((k, di) => {
+    const list = t.events.filter(e => e.day === k);
+    L.push('  ●━━ ' + fmtLong(k).toUpperCase() + '  ' +
+      (list.length ? '(' + list.length + ')' : '(free day)'));
+    if (!list.length) { L.push('  │'); return; }
+    const slots = slotsFor(list);
+    let prevEnd = null;
+    slots.forEach(s => {
+      if (prevEnd !== null && s.start - prevEnd >= 45)
+        L.push('  ┆      ' + durText(s.start - prevEnd) + ' free');
+      else L.push('  │');
+      s.events.forEach((e, i) => {
+        const K = KINDS[e.kind] || KINDS.other;
+        const who = e.who === null ? '' : ' [' + whoOf(t,e).map(p => p.name.split(' ')[0]).join(',') + ']';
+        const branch = s.events.length > 1 ? (i === 0 ? '  ├─┬─ ' : '  │ ├─ ') : '  ├── ';
+        L.push(branch + hhmm(e.start) + '  ' + K.label.toLowerCase() + ': ' + e.name + who);
+        const cont = s.events.length > 1 && i < s.events.length - 1 ? '  │ │   ' : '  │     ';
+        const bits = [durText(e.dur)];
+        if (e.loc) bits.push(e.loc);
+        L.push(cont + '  ' + bits.join(' · ') + '  (ends ' + hhmm(evEnd(e)) + (evEnd(e)>=1440?' +1':'') + ')');
+        if (e.note) L.push(cont + '  “' + e.note + '”');
+        e.checks.forEach(c => L.push(cont + '  [' + (c.done?'x':' ') + '] ' + c.text));
+      });
+      prevEnd = Math.max.apply(null, s.events.map(evEnd));
+    });
+    if (di < days.length - 1) L.push('  │');
+  });
+  L.push('  ●');
+  if (t.checks.length) {
+    L.push('');
+    L.push('  TRIP CHECKLIST');
+    L.push('  ' + '─'.repeat(Math.min(W-4, 30)));
+    t.checks.slice().sort((a,b) => (a.done-b.done) || ((b.important?1:0)-(a.important?1:0)))
+      .forEach(c => L.push('  [' + (c.done?'x':' ') + '] ' + (c.important?'★ ':'  ') + c.text));
+  }
+  return L.join('\n');
+}
+$('io-ascii').addEventListener('click', () => {
+  $('io-preview').style.display = '';
+  $('io-pre').textContent = asciiTimeline($('io-ascii-wide').checked ? 100 : 72);
+});
+$('io-ascii-wide').addEventListener('change', () => $('io-ascii').click());
+$('io-ascii-copy').addEventListener('click', () => {
+  if (navigator.clipboard) navigator.clipboard.writeText($('io-pre').textContent);
+  toast('ASCII timeline copied');
+});
+$('io-ascii-dl').addEventListener('click', () => {
+  const t = trip();
+  download((t.name||'trip').replace(/[^\w -]/g,'') + '.txt', $('io-pre').textContent, 'text/plain');
+});
+
+/* ============================================================
+   picture — the flow drawn as SVG, then rasterised for PNG
+   ============================================================ */
+function buildSVG() {
+  const t = trip(); if (!t) return { svg:'', w:0, h:0 };
+  const W = 840, PADX = 34, SPINE = 150, CARD = SPINE + 26, CW = W - CARD - PADX;
+  const F = "-apple-system, 'Segoe UI', Inter, sans-serif";
+  const esc3 = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  let y = 0, body = '';
+  const line = [];
+
+  y += 46;
+  body += '<text x="' + PADX + '" y="' + y + '" font-family="' + F + '" font-size="26" font-weight="700" ' +
+    'fill="#e9eef4">' + esc3(t.name) + '</text>';
+  y += 24;
+  body += '<text x="' + PADX + '" y="' + y + '" font-family="' + F + '" font-size="13" fill="#93a3b4">' +
+    esc3(fmtShort(t.from) + ' → ' + fmtShort(t.to) + '  ·  ' + tripDays(t).length + ' days' +
+      (t.people.length ? '  ·  ' + t.people.map(p => p.name).join(', ') : '')) + '</text>';
+  y += 30;
+  const spineTop = y;
+
+  tripDays(t).forEach(k => {
+    const list = t.events.filter(e => e.day === k);
+    y += 28;
+    line.push({ y, r: 7, col:'#2f3a47' });
+    body += '<text x="' + CARD + '" y="' + (y+5) + '" font-family="' + F + '" font-size="14" ' +
+      'font-weight="700" fill="#e9eef4">' + esc3(fmtLong(k)) + '</text>' +
+      '<text x="' + (CARD + 8 + fmtLong(k).length * 7.4) + '" y="' + (y+5) + '" font-family="' + F +
+      '" font-size="12" fill="#5c6b7c">' + (list.length ? list.length + ' events' : 'free day') + '</text>';
+    y += 14;
+    if (!list.length) return;
+    const slots = slotsFor(list);
+    let prevEnd = null;
+    slots.forEach(s => {
+      if (prevEnd !== null && s.start - prevEnd >= 45) {
+        y += 20;
+        body += '<text x="' + CARD + '" y="' + y + '" font-family="' + F + '" font-size="11.5" ' +
+          'fill="#5c6b7c">↕ ' + esc3(durText(s.start - prevEnd)) + ' free</text>';
+        y += 6;
+      }
+      const col = (KINDS[s.events[0].kind]||KINDS.other).col;
+      const slotTop = y + 14;
+      body += '<text x="' + (SPINE - 22) + '" y="' + (slotTop + 15) + '" text-anchor="end" font-family="' + F +
+        '" font-size="12.5" font-weight="600" fill="#93a3b4">' + hhmm(s.start) + '</text>';
+      line.push({ y: slotTop + 11, r: 6, col });
+      const n = s.events.length;
+      const cw = n > 1 ? (CW - (n-1)*10) / n : CW;
+      let maxH = 0;
+      s.events.forEach((e, i) => {
+        const K = KINDS[e.kind] || KINDS.other;
+        const x = CARD + i * (cw + 10);
+        const who = whoOf(t, e);
+        const l2 = hhmm(e.start) + '–' + hhmm(evEnd(e)) + (evEnd(e)>=1440?' +1':'') + ' · ' + durText(e.dur) +
+          (e.loc ? ' · ' + e.loc : '');
+        const l3 = e.who !== null ? who.map(p => p.name).join(', ') : (t.people.length ? 'everyone' : '');
+        const checks = e.checks.slice(0, 6);
+        const h = 44 + (l3 ? 16 : 0) + (e.note ? 16 : 0) + checks.length * 15 + 10;
+        maxH = Math.max(maxH, h);
+        body += '<rect x="' + x + '" y="' + slotTop + '" width="' + cw + '" height="' + h + '" rx="10" ' +
+          'fill="#141a21" stroke="#242d38"/>' +
+          '<rect x="' + x + '" y="' + slotTop + '" width="3.5" height="' + h + '" rx="2" fill="' + K.col + '"/>';
+        let ty = slotTop + 20;
+        body += '<text x="' + (x+14) + '" y="' + ty + '" font-family="' + F + '" font-size="13.5" ' +
+          'font-weight="600" fill="#e9eef4">' + esc3(K.icon + ' ' + e.name) + '</text>';
+        ty += 17;
+        body += '<text x="' + (x+14) + '" y="' + ty + '" font-family="' + F + '" font-size="11.5" ' +
+          'fill="#5c6b7c">' + esc3(l2) + '</text>';
+        if (l3) { ty += 16; body += '<text x="' + (x+14) + '" y="' + ty + '" font-family="' + F +
+          '" font-size="11.5" fill="#93a3b4">👤 ' + esc3(l3) + '</text>'; }
+        if (e.note) { ty += 16; body += '<text x="' + (x+14) + '" y="' + ty + '" font-family="' + F +
+          '" font-size="11.5" fill="#5c6b7c">' + esc3(e.note) + '</text>'; }
+        checks.forEach(c => { ty += 15;
+          body += '<text x="' + (x+14) + '" y="' + ty + '" font-family="ui-monospace, monospace" ' +
+            'font-size="11" fill="' + (c.done ? '#4ade80' : '#93a3b4') + '">' +
+            (c.done ? '☑' : '☐') + ' ' + esc3(c.text) + '</text>'; });
+      });
+      y = slotTop + maxH + 8;
+      prevEnd = Math.max.apply(null, s.events.map(evEnd));
+    });
+  });
+
+  y += 22;
+  line.push({ y, r: 7, col:'#2f3a47' });
+  const spineBot = y;
+  if (t.checks.length) {
+    y += 34;
+    body += '<text x="' + PADX + '" y="' + y + '" font-family="' + F + '" font-size="13" font-weight="700" ' +
+      'fill="#93a3b4">TRIP CHECKLIST</text>';
+    t.checks.slice().sort((a,b) => (a.done-b.done) || ((b.important?1:0)-(a.important?1:0))).forEach(c => {
+      y += 18;
+      body += '<text x="' + PADX + '" y="' + y + '" font-family="ui-monospace, monospace" font-size="12" ' +
+        'fill="' + (c.done ? '#4ade80' : c.important ? '#fbbf24' : '#93a3b4') + '">' +
+        (c.done ? '☑' : '☐') + ' ' + (c.important ? '★ ' : '  ') + esc3(c.text) + '</text>';
+    });
+  }
+  y += 30;
+
+  let spine = '<line x1="' + SPINE + '" y1="' + spineTop + '" x2="' + SPINE + '" y2="' + spineBot +
+    '" stroke="#2f3a47" stroke-width="2.5" stroke-linecap="round"/>';
+  line.forEach(d => { spine += '<circle cx="' + SPINE + '" cy="' + d.y + '" r="' + d.r + '" fill="' + d.col +
+    '" stroke="#0d1116" stroke-width="2.5"/>'; });
+
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + y + '" ' +
+    'viewBox="0 0 ' + W + ' ' + y + '">' +
+    '<rect width="' + W + '" height="' + y + '" fill="#0d1116"/>' + spine + body +
+    '<text x="' + PADX + '" y="' + (y-12) + '" font-family="' + F + '" font-size="10.5" fill="#3b4756">' +
+    'termit.dev/itinerary</text></svg>';
+  return { svg, w: W, h: y };
+}
+$('io-svg').addEventListener('click', () => {
+  const t = trip(); if (!t) return;
+  const { svg } = buildSVG();
+  download((t.name||'trip').replace(/[^\w -]/g,'') + '.svg', svg, 'image/svg+xml');
+  close('v-io');
+});
+$('io-png').addEventListener('click', () => {
+  const t = trip(); if (!t) return;
+  const { svg, w, h } = buildSVG();
+  const scale = 2;
+  const img = new Image();
+  const url = URL.createObjectURL(new Blob([svg], { type:'image/svg+xml;charset=utf-8' }));
+  img.onload = () => {
+    const c = document.createElement('canvas');
+    c.width = w * scale; c.height = h * scale;
+    const g = c.getContext('2d');
+    g.fillStyle = '#0d1116'; g.fillRect(0,0,c.width,c.height);
+    g.drawImage(img, 0, 0, c.width, c.height);
+    URL.revokeObjectURL(url);
+    c.toBlob(b => {
+      if (!b) { toast('Could not make a PNG'); return; }
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(b);
+      a.download = (t.name||'trip').replace(/[^\w -]/g,'') + '.png';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      toast('Saved ' + Math.round(w*scale) + '×' + Math.round(h*scale) + ' PNG');
+    }, 'image/png');
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); toast('Could not render the picture'); };
+  img.src = url;
+  close('v-io');
+});
+
+let toastT = null;
+function toast(msg, label, fn) {
+  $('toast-t').textContent = msg;
+  const b = $('toast-a');
+  if (label) { b.style.display = ''; b.textContent = label;
+    b.onclick = () => { fn(); $('toast').classList.remove('on'); }; }
+  else b.style.display = 'none';
+  $('toast').classList.add('on');
+  clearTimeout(toastT); toastT = setTimeout(() => $('toast').classList.remove('on'), 4500);
+}
+addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.veil.on').forEach(v => v.classList.remove('on'));
+  if (document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+  if (e.key === 'n') { e.preventDefault(); openEvent(null); }
+  if (e.key === 'f') { e.preventDefault(); setFocus(!focusMode); }
+  if (e.key === 'm') { e.preventDefault(); setMini(!mini); }
+  if (e.key === 'ArrowLeft') stepDay(-1);
+  if (e.key === 'ArrowRight') stepDay(1);
+});
+
+/* ============================================================
+   first run
+   ============================================================ */
+function seed() {
+  const start = dayKey(new Date());
+  const t = newTrip('Lisbon', start, 4);
+  const P = [
+    { id:uid(), name:'Roma', skin:SKINS[1], hair:'short', hcol:HCOLS[1], extra:'glasses', shirt:SHIRTS[0] },
+    { id:uid(), name:'Anna', skin:SKINS[0], hair:'long',  hcol:HCOLS[0], extra:'none',    shirt:SHIRTS[1] },
+    { id:uid(), name:'Sam',  skin:SKINS[3], hair:'curly', hcol:HCOLS[0], extra:'beard',   shirt:SHIRTS[3] }
+  ];
+  t.people = P;
+  const d = n => addDays(start, n);
+  addEvent({ kind:'flight', name:'SEA → LIS', day:d(0), start:8*60+15, dur:11*60, loc:'Terminal A',
+    who:[P[0].id, P[1].id],
+    checks:[{id:uid(),text:'passports',done:true},{id:uid(),text:'check in online',done:false},
+            {id:uid(),text:'neck pillow',done:false}] });
+  addEvent({ kind:'flight', name:'JFK → LIS', day:d(0), start:8*60+20, dur:7*60, loc:'Terminal 4',
+    who:[P[2].id], note:'Sam meets us at the hotel' });
+  addEvent({ kind:'hotel', name:'Check in', day:d(0), start:20*60+30, dur:30, loc:'Alfama',
+    checks:[{id:uid(),text:'booking ref QK47DP',done:false}] });
+  addEvent({ kind:'food', name:'Dinner', day:d(0), start:21*60+30, dur:90, loc:'Time Out Market' });
+  addEvent({ kind:'walk', name:'Alfama walk', day:d(1), start:10*60, dur:150,
+    checks:[{id:uid(),text:'good shoes',done:false},{id:uid(),text:'water',done:false}] });
+  addEvent({ kind:'museum', name:'Museu do Azulejo', day:d(1), start:14*60, dur:120, who:[P[0].id,P[1].id] });
+  addEvent({ kind:'rest', name:'Nap', day:d(1), start:14*60, dur:90, who:[P[2].id] });
+  addEvent({ kind:'train', name:'Tram 28', day:d(2), start:9*60+30, dur:60 });
+  addEvent({ kind:'museum', name:'Jerónimos Monastery', day:d(2), start:11*60, dur:120, loc:'Belém' });
+  addEvent({ kind:'food', name:'Pastéis de Belém', day:d(2), start:13*60+15, dur:45 });
+  addEvent({ kind:'flight', name:'LIS → SEA', day:d(3), start:13*60, dur:12*60 });
+  t.checks = [
+    { id:uid(), text:'passports valid 6 months', done:true,  important:true },
+    { id:uid(), text:'travel insurance',          done:false, important:true },
+    { id:uid(), text:'EU adapter',                done:false, important:false },
+    { id:uid(), text:'tell the bank',             done:false, important:false }
+  ];
+  save();
+}
+
+load();
+if (!DB.trips.length) seed();
+if (!DB.cur && DB.trips[0]) DB.cur = DB.trips[0].id;
+try { if (localStorage.getItem('itin-mini')) setMini(true); } catch (e) {}
+render();
+renderFocusBar();
+</script>
+</body>
+</html>

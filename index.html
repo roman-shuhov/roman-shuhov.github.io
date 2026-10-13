@@ -240,6 +240,19 @@
   .badge.online::before { content: "● "; }
   .badge.lan { color: var(--amber); }
   .badge.lan::before { content: "◐ "; }
+  .badge.play { color: var(--green); }
+  .badge.play::before { content: "▶ "; }
+  .badge.byo { color: var(--amber); margin-left: 6px; }
+  .badge.byo::before { content: "◆ "; }
+  .card .meta { display: block; color: var(--green-dim); opacity: .75; font-size: 11px; letter-spacing: 0.06em; margin: -6px 0 10px; }
+
+  .status { color: var(--green-dim); opacity: .8; font-size: 12.5px; margin-top: 2px; }
+  .status b { color: var(--green-dim); font-weight: 700; }
+  .jump { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; margin: -30px 0 46px; font-size: 13px; }
+  .jump a { color: var(--green-dim); text-decoration: none; border-bottom: 1px dashed var(--green-faint); }
+  .jump a:hover, .jump a:focus-visible { color: var(--green-bright); border-bottom-style: solid; outline: none; }
+  .jump a::before { content: "./"; color: var(--green-faint); }
+  .group { scroll-margin-top: 24px; }
 
   .uplink { margin-bottom: 64px; }
   .uplink a {
@@ -285,6 +298,7 @@
   <header class="hero">
     <h1 class="glitch" data-text="TERMIT.DEV">TERMIT.DEV</h1>
     <p class="tagline">// root of the sandbox <span class="blink">▮</span></p>
+    <p class="status" id="status"><b>13</b> modules · <b>5</b> playable · <b>0</b> trackers</p>
   </header>
 
   <section class="terminal" id="terminal" aria-label="Interactive terminal">
@@ -295,8 +309,12 @@
     <div class="term-body" id="term-out"></div>
   </section>
 
-  <section aria-labelledby="proj-head">
-    <p class="sec-head" id="proj-head">== <b>system modules</b> ==</p>
+  <nav class="jump" aria-label="Sections">
+    <a href="#net">net</a><a href="#everyday">everyday</a><a href="#arcade">arcade</a><a href="#uplink">uplink</a>
+  </nav>
+
+  <section class="group" id="net" aria-labelledby="net-head">
+    <p class="sec-head" id="net-head">== <b>net</b> · packet → flow → throughput ==</p>
     <div class="cards">
       <a class="card" href="/probe/" rel="noopener">
         <h3>probe</h3>
@@ -310,7 +328,7 @@
           patterns named — handshakes, ARP discovery, ping loss, retransmissions, resets.</p>
         <span class="badge online">online</span>
       </a>
-      <a class="card wide" href="/wire/" rel="noopener">
+      <a class="card" href="/wire/" rel="noopener">
         <h3>wire</h3>
         <p>The whole host at once. Feed it <span class="mono">ss</span>, <span class="mono">conntrack</span> or
           <span class="mono">/proc/net/dev</span> and it draws rx/tx as ASCII wires and a live peer map —
@@ -323,6 +341,12 @@
           then run the real key schedule and tune a connection until it breaks.</p>
         <span class="badge online">online</span>
       </a>
+    </div>
+  </section>
+
+  <section class="group" id="everyday" aria-labelledby="everyday-head">
+    <p class="sec-head" id="everyday-head">== <b>everyday</b> ==</p>
+    <div class="cards">
       <a class="card" href="/pnw/" rel="noopener">
         <h3>pnw</h3>
         <p>Link light rail and every Washington State Ferry run on one map, with a departures board —
@@ -346,22 +370,50 @@
           out, keep them visible or let them disappear.</p>
         <span class="badge online">online</span>
       </a>
-      <a class="card" href="/pounce/" rel="noopener">
-        <h3>pounce</h3>
-        <p>A game for cats. Lay the tablet on the floor and something scuttles across it — every catch pops,
-          buzzes and counts, with a scoreboard per cat.</p>
-        <span class="badge online">playable</span>
+    </div>
+  </section>
+
+  <section class="group" id="arcade" aria-labelledby="arcade-head">
+    <p class="sec-head" id="arcade-head">== <b>arcade</b> ==</p>
+    <div class="cards">
+      <a class="card" href="/steppe/" rel="noopener">
+        <h3>steppe</h3>
+        <span class="meta">rts · 1–3 ai rivals · plays offline</span>
+        <p>Pike-and-musket war on the open steppe. Peasants farm, chop and mine; regiments march in line,
+          column or square under their banners; leave a windmill unguarded and someone takes it.</p>
+        <span class="badge play">playable</span>
+      </a>
+      <a class="card" href="/cobalt/" rel="noopener">
+        <h3>cobalt</h3>
+        <span class="meta">rts · post-atomic · plays offline</span>
+        <p>Base building in the ash. Deploy an outpost, keep the reactors humming, send crawlers into the
+          glowing cobalt fields, then break the rival clans with junk tanks, gyrocopters and one very large missile.</p>
+        <span class="badge play">playable</span>
+      </a>
+      <a class="card wide" href="/f2ce/" rel="noopener">
+        <h3>f2ce</h3>
+        <span class="meta">fallout 2 · fallout2-ce engine → webassembly</span>
+        <p>Fallout 2 in a browser tab, on the open-source <span class="mono">fallout2-ce</span> engine. Point it at
+          your own copy's game folder once — the files and your saves stay in your browser; only the engine
+          is hosted here.</p>
+        <span class="badge play">playable</span><span class="badge byo">bring your own files</span>
       </a>
       <a class="card" href="/colony/" rel="noopener">
         <h3>colony</h3>
         <p>An idle game with no clicking. Your termites are dumb — you write their instincts, top-down,
           first match wins. Harvest, then hold the line when the ants come.</p>
-        <span class="badge online">playable</span>
+        <span class="badge play">playable</span>
+      </a>
+      <a class="card" href="/pounce/" rel="noopener">
+        <h3>pounce</h3>
+        <p>A game for cats. Lay the tablet on the floor and something scuttles across it — every catch pops,
+          buzzes and counts, with a scoreboard per cat.</p>
+        <span class="badge play">playable</span>
       </a>
     </div>
   </section>
 
-  <section class="uplink" aria-labelledby="uplink-head">
+  <section class="uplink group" id="uplink" aria-labelledby="uplink-head">
     <p class="sec-head" id="uplink-head">== <b>uplink</b> ==</p>
     <p class="row">github&nbsp;&nbsp;→ <a href="https://github.com/roman-shuhov" rel="noopener">github.com/roman-shuhov</a></p>
     <p class="row">charts&nbsp;&nbsp;→ <a href="https://chart.termit.dev" rel="noopener">chart.termit.dev</a></p>
@@ -374,6 +426,9 @@
     <p class="row">pounce→ <a href="/pounce/">termit.dev/pounce</a></p>
     <p class="row">lists&nbsp;&nbsp;→ <a href="/lists/">termit.dev/lists</a></p>
     <p class="row">trip&nbsp;&nbsp;&nbsp;→ <a href="/itinerary/">termit.dev/itinerary</a></p>
+    <p class="row">steppe→ <a href="/steppe/">termit.dev/steppe</a></p>
+    <p class="row">cobalt→ <a href="/cobalt/">termit.dev/cobalt</a></p>
+    <p class="row">f2ce&nbsp;&nbsp;&nbsp;→ <a href="/f2ce/">termit.dev/f2ce</a></p>
   </section>
 
   <footer>
@@ -576,6 +631,10 @@ const COMMANDS = {
     addLine('  <span class="bright">tls</span>         learn how https works, from the maths up');
     addLine('  <span class="bright">pnw</span>         light rail and ferries, live, with delays');
     addLine('  <span class="bright">pounce</span>      hand the tablet to a cat');
+    addLine('  <span class="bright">steppe</span>      pikes, muskets and windmills');
+    addLine('  <span class="bright">cobalt</span>      base building after the bombs');
+    addLine('  <span class="bright">fallout</span>     fallout 2 in a tab, bring your own files');
+    addLine('  <span class="bright">arcade</span>      everything you can play here');
     addLine('  <span class="bright">lists</span>       checklists, stored nowhere but here');
     addLine('  <span class="bright">trip</span>        put a journey on a timeline');
     addLine('  <span class="bright">github</span>      the code lives here');
@@ -585,7 +644,7 @@ const COMMANDS = {
     addLine('  <span class="dim">…and a few that aren\u2019t listed. rabbit holes exist.</span>');
   },
   ls() {
-    addLine('<span class="bright">diagram/</span>  <span class="bright">colony/</span>  <span class="bright">wire/</span>  <span class="bright">probe/</span>  <span class="bright">trace/</span>  <span class="bright">handshake/</span>  <span class="bright">pnw/</span>  <span class="bright">pounce/</span>  <span class="bright">lists/</span>  <span class="bright">itinerary/</span>');
+    addLine('<span class="bright">probe/</span>  <span class="bright">trace/</span>  <span class="bright">wire/</span>  <span class="bright">handshake/</span>  <span class="bright">pnw/</span>  <span class="bright">diagram/</span>  <span class="bright">itinerary/</span>  <span class="bright">lists/</span>  <span class="bright">steppe/</span>  <span class="bright">cobalt/</span>  <span class="bright">f2ce/</span>  <span class="bright">colony/</span>  <span class="bright">pounce/</span>');
   },
   chart() {
     addLine('→ <a href="https://chart.termit.dev" rel="noopener">https://chart.termit.dev</a> <span class="dim">// sankey diagram studio</span>');
@@ -629,6 +688,29 @@ const COMMANDS = {
     await typeLine('<span class="dim">tapping the line…</span>', 22);
     addLine('→ <a href="/wire/">termit.dev/wire</a> <span class="dim">// every byte has somewhere to be</span>');
     setTimeout(() => { location.href = '/wire/'; }, 1200);
+  },
+  arcade() {
+    addLine('<span class="dim">insert coin:</span>');
+    addLine('  <a href="/steppe/">steppe</a>   <span class="dim">rts on the open steppe</span>');
+    addLine('  <a href="/cobalt/">cobalt</a>   <span class="dim">post-atomic base building</span>');
+    addLine('  <a href="/f2ce/">f2ce</a>     <span class="dim">fallout 2, your own game files</span>');
+    addLine('  <a href="/colony/">colony</a>   <span class="dim">program the termites</span>');
+    addLine('  <a href="/pounce/">pounce</a>   <span class="dim">for cats only</span>');
+  },
+  async steppe() {
+    await typeLine('<span class="dim">raising the banners…</span>', 22);
+    addLine('→ <a href="/steppe/">termit.dev/steppe</a> <span class="dim">// guard the windmills</span>');
+    setTimeout(() => { location.href = '/steppe/'; }, 1200);
+  },
+  async cobalt() {
+    await typeLine('<span class="dim">spinning up the reactors…</span>', 22);
+    addLine('→ <a href="/cobalt/">termit.dev/cobalt</a> <span class="dim">// mind the power bar</span>');
+    setTimeout(() => { location.href = '/cobalt/'; }, 1200);
+  },
+  async fallout() {
+    await typeLine('<span class="dim">booting the wasteland…</span>', 22);
+    addLine('→ <a href="/f2ce/">termit.dev/f2ce</a> <span class="dim">// your game files never leave this browser</span>');
+    setTimeout(() => { location.href = '/f2ce/'; }, 1200);
   },
   async play() {
     await typeLine('<span class="dim">waking the colony…</span>', 22);
@@ -695,7 +777,11 @@ const ALIASES = { 'll': 'ls', 'ls projects': 'ls', 'open chart': 'chart', 'diagr
                   'transit': 'pnw', 'sound': 'pnw', 'link': 'pnw', 'ferry': 'pnw', 'wsf': 'pnw',
                   'cat': 'pounce', 'cats': 'pounce', 'meow': 'pounce',
                   'todo': 'lists', 'checklist': 'lists', 'list': 'lists', 'shopping': 'lists',
-                  'itinerary': 'trip', 'travel': 'trip', 'plan': 'trip' };
+                  'itinerary': 'trip', 'travel': 'trip', 'plan': 'trip',
+                  'games': 'arcade', 'ls games': 'arcade', 'insert coin': 'arcade',
+                  'banners': 'steppe', 'cossacks': 'steppe', 'козаки': 'steppe', 'pikes': 'steppe', 'muskets': 'steppe',
+                  'tanks': 'cobalt', 'rts': 'cobalt', 'ore': 'cobalt', 'crawler': 'cobalt',
+                  'f2ce': 'fallout', 'fallout2': 'fallout', 'fallout 2': 'fallout', 'vault': 'fallout', 'wasteland': 'fallout', 'pipboy': 'fallout' };
 
 function esc(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -777,6 +863,15 @@ document.getElementById('terminal').addEventListener('click', e => {
   if (inputEl && e.target.tagName !== 'A') inputEl.focus({ preventScroll: true });
 });
 
+/* =============== status line =============== */
+
+(function () {
+  const all = document.querySelectorAll('.cards .card').length;
+  const play = document.querySelectorAll('.cards .badge.play').length;
+  const st = document.getElementById('status');
+  if (st) st.innerHTML = '<b>' + all + '</b> modules · <b>' + play + '</b> playable · <b>0</b> trackers';
+})();
+
 /* =============== boot sequence =============== */
 
 async function boot() {
@@ -787,6 +882,7 @@ async function boot() {
   await typeLine('<span class="ok">[ <b>OK</b> ] initializing termit.dev …</span>', 8);
   await typeLine('<span class="ok">[ <b>OK</b> ] mounting /dev/green …</span>', 8);
   await typeLine('<span class="ok">[ <b>OK</b> ] establishing uplink … <span class="dim">42ms</span></span>', 8);
+  await typeLine('<span class="ok">[ <b>OK</b> ] loading arcade … <span class="dim">5 cartridges</span></span>', 8);
   await pause(220);
   addLine('<span class="dim">last login: ' + new Date().toDateString() + ' from 127.0.0.1</span>');
   await pause(320);

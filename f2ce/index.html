@@ -1,0 +1,1503 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>F2CE — termit.dev</title>
+<meta name="description" content="Fallout 2 Community Edition compiled to WebAssembly. Bring your own copy of the game; the files stay in your browser.">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23050805'/%3E%3Ctext x='3' y='22' font-family='monospace' font-weight='bold' font-size='15' fill='%2300ff41'%3EF2%3C/text%3E%3Crect x='22' y='10' width='6' height='13' fill='%23b4ffcd'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #050805;
+    --panel: #0a120c;
+    --line: #103d22;
+    --line-hi: #0f5c33;
+    --fg: #00ff41;
+    --hi: #b4ffcd;
+    --dim: #1e9e5c;
+    --faint: #0f5c33;
+    --amber: #ffb000;
+    --red: #ff5c5c;
+    --glow: 0 0 8px rgba(0, 255, 65, 0.35);
+    --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--fg); }
+  body {
+    font: 14px/1.6 var(--mono);
+    -webkit-font-smoothing: antialiased;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(0, 255, 65, 0.07), transparent 60%),
+      var(--bg);
+  }
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 40;
+    background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px);
+  }
+  ::selection { background: var(--fg); color: #031007; }
+  body.running { overflow: hidden; }
+  body.running::after { display: none; }
+  a { color: var(--hi); text-decoration-color: var(--faint); text-underline-offset: 3px; }
+  a:hover { text-decoration-color: var(--fg); }
+  code, kbd {
+    font-family: var(--mono);
+    font-size: 0.92em;
+    color: var(--hi);
+    background: rgba(0, 255, 65, 0.07);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 0 4px;
+  }
+  [hidden] { display: none !important; }
+
+  .wrap { max-width: 880px; margin: 0 auto; padding: 18px 16px 48px; }
+  .top { display: flex; gap: 8px; align-items: center; color: var(--dim); font-size: 13px; flex-wrap: wrap; }
+  .top a { color: var(--dim); text-decoration: none; }
+  .top a:hover { color: var(--hi); }
+  .grow { flex: 1; }
+
+  .hero { margin: 36px 0 22px; }
+  h1 {
+    margin: 0;
+    font-size: clamp(44px, 9vw, 76px);
+    line-height: 1;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: var(--hi);
+    text-shadow: var(--glow), 0 0 22px rgba(0, 255, 65, 0.18);
+  }
+  .cursor {
+    display: inline-block;
+    width: 0.5em;
+    height: 0.8em;
+    margin-left: 0.08em;
+    background: var(--fg);
+    box-shadow: var(--glow);
+    vertical-align: -0.04em;
+    animation: blink 1.1s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  .lede { max-width: 62ch; color: var(--fg); margin: 14px 0 0; }
+  .lede b { color: var(--hi); font-weight: 700; }
+
+  .term {
+    border: 1px solid var(--line);
+    background: linear-gradient(var(--panel), rgba(6, 16, 10, 0.6));
+    padding: 12px 14px;
+    margin: 18px 0;
+  }
+  .row { display: flex; gap: 10px; align-items: baseline; min-width: 0; }
+  .row .k { color: var(--dim); white-space: nowrap; }
+  .row .k::before { content: "> "; color: var(--faint); }
+  .row .dots { flex: 1; border-bottom: 1px dotted var(--faint); transform: translateY(-4px); min-width: 12px; }
+  .row .v { color: var(--hi); text-align: right; overflow-wrap: anywhere; }
+  .v.ok { color: var(--fg); }
+  .v.warn { color: var(--amber); }
+  .v.bad { color: var(--red); }
+
+  .msg { border: 1px solid var(--line-hi); padding: 10px 14px; margin: 0 0 18px; white-space: pre-wrap; }
+  .msg.warn { border-color: #6b4c00; color: var(--amber); }
+  .msg.bad { border-color: #6e2424; color: var(--red); }
+
+  .panel { margin: 0 0 22px; }
+  .drop {
+    border: 1px dashed var(--line-hi);
+    padding: 34px 18px;
+    text-align: center;
+    background: rgba(0, 255, 65, 0.025);
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .drop.over { background: rgba(0, 255, 65, 0.09); border-color: var(--fg); }
+  .drop-title { font-weight: 800; letter-spacing: 0.3em; color: var(--hi); text-shadow: var(--glow); }
+  .drop p { margin: 10px 0; }
+  .small { font-size: 12px; }
+  .dim { color: var(--dim); }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font: 700 13px/1 var(--mono);
+    letter-spacing: 0.06em;
+    color: var(--fg);
+    background: transparent;
+    border: 1px solid var(--line-hi);
+    padding: 10px 14px;
+    cursor: pointer;
+    text-transform: uppercase;
+    user-select: none;
+  }
+  .btn:hover { color: var(--hi); border-color: var(--fg); background: rgba(0, 255, 65, 0.06); }
+  .btn:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+  .btn.primary { background: var(--fg); color: #031007; border-color: var(--fg); }
+  .btn.primary:hover { background: var(--hi); color: #031007; }
+  .btn.danger { border-color: #5c2424; color: #ff8a8a; }
+  .btn.danger:hover { border-color: var(--red); color: var(--red); background: rgba(255, 92, 92, 0.06); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn.play {
+    width: 100%;
+    padding: 20px;
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: 0.3em;
+    background: var(--fg);
+    color: #031007;
+    border-color: var(--fg);
+    box-shadow: var(--glow), 0 0 30px rgba(0, 255, 65, 0.15);
+  }
+  .btn.play:hover { background: var(--hi); color: #031007; }
+
+  .settings, .actions { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 16px; align-items: center; }
+  .settings label { display: inline-flex; gap: 8px; align-items: center; color: var(--dim); }
+  select {
+    font: 13px var(--mono);
+    color: var(--hi);
+    background: var(--panel);
+    border: 1px solid var(--line-hi);
+    padding: 6px 8px;
+  }
+  input[type="checkbox"] { accent-color: var(--fg); width: 15px; height: 15px; }
+  .actions .btn { padding: 8px 12px; font-size: 12px; }
+
+  .bar { height: 14px; border: 1px solid var(--line-hi); padding: 2px; margin: 10px 0 6px; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--fg); box-shadow: var(--glow); transition: width 0.2s; }
+
+  details { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 18px; }
+  summary { cursor: pointer; color: var(--hi); }
+  summary::marker { color: var(--dim); }
+  ol, ul { padding-left: 22px; margin: 10px 0; }
+  li { margin: 6px 0; }
+  pre.cmd {
+    margin: 8px 0;
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--line);
+    overflow-x: auto;
+    color: var(--hi);
+    font-size: 12.5px;
+  }
+  h2 { font-size: 13px; letter-spacing: 0.25em; text-transform: uppercase; color: var(--dim); margin: 30px 0 10px; font-weight: 700; }
+  .keys { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; }
+  .keys div:nth-child(odd) { color: var(--hi); }
+  footer { margin-top: 36px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--dim); font-size: 12px; }
+  footer p { margin: 6px 0; }
+
+  /* Game stage */
+  #stage {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    display: grid;
+    place-items: center;
+    z-index: 10;
+  }
+  #canvas {
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    touch-action: none;
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #hud {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    gap: 6px;
+    opacity: 0;
+    transition: opacity 0.25s;
+    z-index: 20;
+  }
+  #hud.show, #hud:hover, #hud:focus-within { opacity: 1; }
+  #hud .btn { background: rgba(0, 0, 0, 0.72); padding: 7px 10px; font-size: 11px; }
+  #boot {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: var(--bg);
+    z-index: 15;
+    padding: 16px;
+  }
+  #boot pre { margin: 0; max-width: 100%; white-space: pre-wrap; color: var(--fg); font: 13px/1.6 var(--mono); }
+  #overlay {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgba(2, 6, 3, 0.9);
+    z-index: 30;
+    padding: 16px;
+  }
+  #overlay .box { max-width: 620px; border: 1px solid var(--line-hi); background: var(--panel); padding: 20px; }
+  #overlay h3 { margin: 0 0 10px; color: var(--hi); letter-spacing: 0.15em; text-transform: uppercase; font-size: 15px; }
+  #overlay p { white-space: pre-wrap; margin: 0 0 12px; }
+  #overlay .box.bad h3 { color: var(--red); }
+  #toast {
+    position: fixed;
+    left: 50%;
+    bottom: 18px;
+    transform: translateX(-50%);
+    background: var(--panel);
+    border: 1px solid var(--line-hi);
+    padding: 8px 14px;
+    z-index: 60;
+    max-width: calc(100vw - 32px);
+  }
+
+  @media (max-width: 560px) {
+    .row { flex-wrap: wrap; }
+    .row .dots { display: none; }
+    .row .v { text-align: left; }
+    .btn.play { font-size: 18px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap" id="loader">
+  <header class="top">
+    <a href="/">termit.dev</a><span>/</span><span>f2ce</span>
+    <span class="grow"></span>
+    <span id="storage"></span>
+  </header>
+
+  <section class="hero">
+    <h1>F2CE<span class="cursor"></span></h1>
+    <p class="lede">The <b>Fallout 2 Community Edition</b> engine, compiled to WebAssembly. Bring your own copy of the game: it's copied into this browser's storage on your device, and nothing gets uploaded.</p>
+  </section>
+
+  <section class="term" aria-live="polite">
+    <div class="row"><span class="k">browser</span><span class="dots"></span><span class="v" id="st-browser">checking…</span></div>
+    <div class="row"><span class="k">game files</span><span class="dots"></span><span class="v" id="st-files">—</span></div>
+    <div class="row"><span class="k">saves</span><span class="dots"></span><span class="v" id="st-saves">—</span></div>
+  </section>
+
+  <div id="msg" class="msg" hidden></div>
+
+  <section id="panel-empty" class="panel" hidden>
+    <div id="drop" class="drop">
+      <div class="drop-title">INSERT GAME DATA</div>
+      <p>Drop your <b>Fallout 2</b> folder here</p>
+      <label class="btn primary">Choose folder…<input id="pick-folder" type="file" webkitdirectory directory multiple hidden></label>
+      <p class="dim small">It's the folder with <code>master.dat</code>, <code>critter.dat</code>, <code>patch000.dat</code> and <code>data</code>.</p>
+    </div>
+    <details id="howto">
+      <summary>Where do I get the folder?</summary>
+      <ol>
+        <li>Buy Fallout 2 on <a href="https://www.gog.com/game/fallout_2" target="_blank" rel="noopener">GOG</a>. It's DRM-free and comes with a plain offline installer. A copy from Steam or Epic works too.</li>
+        <li><b>GOG on a Mac or Linux:</b> from your GOG library, download the offline backup installer (<code>setup_fallout2_*.exe</code>), then unpack it:
+          <pre class="cmd">brew install innoextract        # Linux: sudo apt install innoextract
+innoextract setup_fallout2_*.exe -I app
+mv app Fallout2</pre>
+          The <code>Fallout2</code> folder is the one to drop here.</li>
+        <li><b>GOG on Windows:</b> run the installer. The folder ends up at <code>C:\GOG Games\Fallout 2</code>.</li>
+        <li><b>Steam on Windows:</b> Library → Fallout 2 → Manage → Browse local files.</li>
+        <li><b>Steam on a Mac:</b> the Steam app won't download it there, but SteamCMD will. It asks for your password and Steam Guard code:
+          <pre class="cmd">brew install --cask steamcmd
+steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir ~/Fallout2 \
+  +login YOUR_STEAM_NAME +app_update 38410 validate +quit</pre></li>
+      </ol>
+      <p class="dim small">The page only keeps what the game needs: the .dat archives, the <code>data</code> and <code>sound</code> folders, the config files, and any saves. Installers, executables and manuals are skipped.</p>
+    </details>
+  </section>
+
+  <section id="panel-import" class="panel" hidden>
+    <div class="row"><span class="k">copying into browser storage</span><span class="dots"></span><span class="v" id="imp-pct">0%</span></div>
+    <div class="bar"><i id="imp-bar"></i></div>
+    <div class="row small dim"><span id="imp-file"></span><span class="grow"></span><span id="imp-bytes"></span></div>
+  </section>
+
+  <section id="panel-ready" class="panel" hidden>
+    <button id="play" class="btn play" type="button">▶ PLAY</button>
+    <div class="settings">
+      <label>Resolution
+        <select id="opt-res">
+          <option value="640x480">640×480 (original)</option>
+          <option value="auto">Match window</option>
+          <option value="800x600">800×600</option>
+          <option value="1024x768">1024×768</option>
+          <option value="1280x720">1280×720</option>
+          <option value="1280x960">1280×960</option>
+        </select>
+      </label>
+      <label>Scaling
+        <select id="opt-scale">
+          <option value="fit">Fill window</option>
+          <option value="int">Whole pixels only</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="opt-skip"> Skip intro movies</label>
+    </div>
+    <div class="actions">
+      <button class="btn" id="btn-export" type="button">Download saves</button>
+      <label class="btn">Load saves (.zip)<input id="pick-saves" type="file" accept=".zip,application/zip" hidden></label>
+      <label class="btn">Replace game files<input id="pick-folder2" type="file" webkitdirectory directory multiple hidden></label>
+      <button class="btn danger" id="btn-forget" type="button">Remove from this browser</button>
+    </div>
+  </section>
+
+  <h2>Controls</h2>
+  <div class="keys small">
+    <div>Left click</div><div>walk, use, talk, pick up</div>
+    <div>Right click</div><div>switch cursor (move / look / use)</div>
+    <div>F6 / F7</div><div>quick save / quick load</div>
+    <div>Ctrl+S / Ctrl+L</div><div>save / load menu</div>
+    <div>Esc</div><div>close windows, open the game menu</div>
+    <div>Fullscreen</div><div>move the mouse to the top-right corner while playing</div>
+  </div>
+
+  <h2>Good to know</h2>
+  <ul class="small">
+    <li>Saves live in this browser. Use <b>Download saves</b> now and then: clearing site data, or the browser running low on space, can wipe them.</li>
+    <li>Built for a desktop browser with a mouse. Touch works like a trackpad: drag to move the cursor, tap to click, two-finger tap to right click.</li>
+    <li>Saves from the PC version work both ways. Saves in your folder's <code>data/savegame</code> are brought in the first time you add the game.</li>
+  </ul>
+
+  <footer>
+    <p>Engine: <a href="https://github.com/alexbatalov/fallout2-ce" target="_blank" rel="noopener">Fallout 2 Community Edition</a> by Alexander Batalov and contributors, used under the <a href="LICENSE.md">Sustainable Use License</a>. This copy is <b>modified</b> to run in web browsers (WebAssembly build, browser file layer, input changes): see <a href="NOTICE.md">NOTICE</a> and <a href="web-port.patch">the changes</a>.</p>
+    <p>Not affiliated with or endorsed by Bethesda Softworks, Interplay, or the fallout2-ce project. Fallout is a trademark of Bethesda Softworks LLC. No game data is provided here.</p>
+  </footer>
+</div>
+
+<div id="stage" hidden>
+  <canvas id="canvas" width="1" height="1"></canvas>
+  <div id="hud">
+    <button class="btn" id="hud-full" type="button">Fullscreen</button>
+    <button class="btn" id="hud-saves" type="button">Saves</button>
+    <button class="btn" id="hud-exit" type="button">Exit</button>
+  </div>
+  <div id="boot"><pre id="boot-log"></pre></div>
+  <div id="overlay" hidden>
+    <div class="box" id="ov-box">
+      <h3 id="ov-title"></h3>
+      <p id="ov-text"></p>
+      <div class="actions" id="ov-actions"></div>
+    </div>
+  </div>
+</div>
+<div id="toast" hidden></div>
+
+<script>
+(() => {
+  'use strict';
+
+  const BUILD = 'fff8e93e1e';
+  const ENGINE_SCRIPT = 'fallout2-ce.js';
+  const DB_NAME = 'f2ce';
+  const PIECE_BYTES = 32 * 1024 * 1024; // storage piece size
+  const SMALL_FILE = 256 * 1024; // files up to this size are read into memory up front
+  const CONFIG_NAMES = ['fallout2.cfg', 'ddraw.ini', 'f2_res.ini'];
+  // ?debug sends the engine's debug log to the browser console.
+  const DEBUG = new URLSearchParams(location.search).has('debug');
+  const $ = (id) => document.getElementById(id);
+
+  // ---------------------------------------------------------------- settings
+  const SETTINGS_KEY = 'f2ce.settings';
+  const settings = Object.assign({ res: '640x480', scale: 'fit', skipIntro: false }, readJSON(SETTINGS_KEY));
+
+  function readJSON(key) {
+    try {
+      return JSON.parse(localStorage.getItem(key)) || {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function saveSettings() {
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    } catch (e) {
+      // Private mode or storage disabled: settings just won't stick.
+    }
+  }
+
+  // --------------------------------------------------------------- utilities
+  function fmtBytes(n) {
+    if (n >= 1e9) return (n / 1e9).toFixed(2) + ' GB';
+    if (n >= 1e6) return Math.round(n / 1e6) + ' MB';
+    if (n >= 1e3) return Math.round(n / 1e3) + ' KB';
+    return n + ' B';
+  }
+
+  function plural(n, one, many) {
+    return n + ' ' + (n === 1 ? one : many);
+  }
+
+  let toastTimer = 0;
+  function toast(text, ms = 3500) {
+    const el = $('toast');
+    el.textContent = text;
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.hidden = true; }, ms);
+  }
+
+  function setStatus(id, text, cls = '') {
+    const el = $(id);
+    el.textContent = text;
+    el.className = 'v' + (cls ? ' ' + cls : '');
+  }
+
+  function showMessage(text, cls = '') {
+    const el = $('msg');
+    if (!text) {
+      el.hidden = true;
+      return;
+    }
+    el.textContent = text;
+    el.className = 'msg' + (cls ? ' ' + cls : '');
+    el.hidden = false;
+  }
+
+  function showPanel(name) {
+    for (const p of ['empty', 'import', 'ready']) {
+      $('panel-' + p).hidden = p !== name;
+    }
+  }
+
+  function download(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+
+  // --------------------------------------------------------------- IndexedDB
+  let db = null;
+
+  function openDB() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const d = req.result;
+        d.createObjectStore('files', { keyPath: 'path' });
+        d.createObjectStore('pieces', { keyPath: ['path', 'index'] });
+        d.createObjectStore('saves', { keyPath: 'path' });
+        d.createObjectStore('meta');
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+      req.onblocked = () => reject(new Error('Storage is busy in another tab. Close other F2CE tabs and reload.'));
+    });
+  }
+
+  // Runs fn(store, ...) inside one transaction; resolves when it commits with
+  // the result of the request fn returned (if any).
+  function tx(names, mode, fn) {
+    return new Promise((resolve, reject) => {
+      const t = db.transaction(names, mode);
+      const stores = [].concat(names).map((n) => t.objectStore(n));
+      const out = fn(...stores);
+      t.oncomplete = () => resolve(out instanceof IDBRequest ? out.result : out);
+      t.onabort = () => reject(t.error || new Error('Storage transaction aborted'));
+      t.onerror = () => {};
+    });
+  }
+
+  // ------------------------------------------------------------- INI helpers
+  function parseIni(text) {
+    const sections = [];
+    let current = null;
+    for (const raw of String(text || '').split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line || line[0] === ';' || line[0] === '#') continue;
+      const m = line.match(/^\[(.+)\]$/);
+      if (m) {
+        current = findSection(sections, m[1].trim()) || { name: m[1].trim(), entries: [] };
+        if (!sections.includes(current)) sections.push(current);
+        continue;
+      }
+      const eq = line.indexOf('=');
+      if (eq < 0 || !current) continue;
+      setEntry(current, line.slice(0, eq).trim(), line.slice(eq + 1).trim());
+    }
+    return sections;
+  }
+
+  function findSection(sections, name) {
+    const lower = name.toLowerCase();
+    return sections.find((s) => s.name.toLowerCase() === lower) || null;
+  }
+
+  function setEntry(section, key, value) {
+    const lower = key.toLowerCase();
+    const entry = section.entries.find((e) => e[0].toLowerCase() === lower);
+    if (entry) entry[1] = String(value);
+    else section.entries.push([key, String(value)]);
+  }
+
+  function iniSet(sections, sectionName, key, value) {
+    let section = findSection(sections, sectionName);
+    if (!section) {
+      section = { name: sectionName, entries: [] };
+      sections.push(section);
+    }
+    setEntry(section, key, value);
+  }
+
+  function serializeIni(sections) {
+    return sections.map((s) => '[' + s.name + ']\n' + s.entries.map((e) => e[0] + '=' + e[1]).join('\n') + '\n').join('\n');
+  }
+
+  // ------------------------------------------------------------------- ZIP
+  const CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+
+  function crc32(data) {
+    let c = 0xffffffff;
+    for (let i = 0; i < data.length; i++) c = CRC_TABLE[(c ^ data[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  }
+
+  function dosTime(ms) {
+    const d = new Date(ms);
+    const time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    const date = ((Math.max(1980, d.getFullYear()) - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    return [time, date];
+  }
+
+  // Store-only zip writer (saves are small and already compact).
+  function makeZip(entries) {
+    const enc = new TextEncoder();
+    const parts = [];
+    const central = [];
+    let offset = 0;
+    for (const e of entries) {
+      const name = enc.encode(e.name);
+      const crc = crc32(e.data);
+      const [time, date] = dosTime(e.mtime || Date.now());
+      const local = new DataView(new ArrayBuffer(30));
+      local.setUint32(0, 0x04034b50, true);
+      local.setUint16(4, 20, true);
+      local.setUint16(6, 0x0800, true);
+      local.setUint16(8, 0, true);
+      local.setUint16(10, time, true);
+      local.setUint16(12, date, true);
+      local.setUint32(14, crc, true);
+      local.setUint32(18, e.data.length, true);
+      local.setUint32(22, e.data.length, true);
+      local.setUint16(26, name.length, true);
+      local.setUint16(28, 0, true);
+      parts.push(local, name, e.data);
+      const cen = new DataView(new ArrayBuffer(46));
+      cen.setUint32(0, 0x02014b50, true);
+      cen.setUint16(4, 20, true);
+      cen.setUint16(6, 20, true);
+      cen.setUint16(8, 0x0800, true);
+      cen.setUint16(10, 0, true);
+      cen.setUint16(12, time, true);
+      cen.setUint16(14, date, true);
+      cen.setUint32(16, crc, true);
+      cen.setUint32(20, e.data.length, true);
+      cen.setUint32(24, e.data.length, true);
+      cen.setUint16(28, name.length, true);
+      cen.setUint32(42, offset, true);
+      central.push(cen, name);
+      offset += 30 + name.length + e.data.length;
+    }
+    const centralSize = central.reduce((n, p) => n + p.byteLength, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true);
+    end.setUint16(8, entries.length, true);
+    end.setUint16(10, entries.length, true);
+    end.setUint32(12, centralSize, true);
+    end.setUint32(16, offset, true);
+    return new Blob([...parts, ...central, end], { type: 'application/zip' });
+  }
+
+  async function readZip(file) {
+    const tailSize = Math.min(file.size, 65557);
+    const tail = new DataView(await file.slice(file.size - tailSize).arrayBuffer());
+    let eocd = -1;
+    for (let i = tail.byteLength - 22; i >= 0; i--) {
+      if (tail.getUint32(i, true) === 0x06054b50) {
+        eocd = i;
+        break;
+      }
+    }
+    if (eocd < 0) throw new Error('That file is not a zip archive.');
+    const count = tail.getUint16(eocd + 10, true);
+    const cdSize = tail.getUint32(eocd + 12, true);
+    const cdOffset = tail.getUint32(eocd + 16, true);
+    const cd = new DataView(await file.slice(cdOffset, cdOffset + cdSize).arrayBuffer());
+    const dec = new TextDecoder();
+    const out = [];
+    let p = 0;
+    for (let i = 0; i < count; i++) {
+      if (cd.getUint32(p, true) !== 0x02014b50) throw new Error('Damaged zip archive.');
+      const method = cd.getUint16(p + 10, true);
+      const compSize = cd.getUint32(p + 20, true);
+      const nameLen = cd.getUint16(p + 28, true);
+      const extraLen = cd.getUint16(p + 30, true);
+      const commentLen = cd.getUint16(p + 32, true);
+      const localOffset = cd.getUint32(p + 42, true);
+      const name = dec.decode(new Uint8Array(cd.buffer, p + 46, nameLen));
+      p += 46 + nameLen + extraLen + commentLen;
+      if (name.endsWith('/')) continue;
+      const lh = new DataView(await file.slice(localOffset, localOffset + 30).arrayBuffer());
+      const start = localOffset + 30 + lh.getUint16(26, true) + lh.getUint16(28, true);
+      const raw = file.slice(start, start + compSize);
+      let data;
+      if (method === 0) {
+        data = new Uint8Array(await raw.arrayBuffer());
+      } else if (method === 8 && typeof DecompressionStream !== 'undefined') {
+        data = new Uint8Array(await new Response(raw.stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+      } else {
+        throw new Error('Unsupported compression in zip (' + name + ').');
+      }
+      out.push({ name, data });
+    }
+    return out;
+  }
+
+  // ------------------------------------------------------- folder selection
+  async function collectFromInput(fileList) {
+    return Array.from(fileList, (f) => ({ path: f.webkitRelativePath || f.name, file: f }));
+  }
+
+  async function collectFromDrop(dataTransfer) {
+    const entries = Array.from(dataTransfer.items || [])
+      .map((item) => (item.webkitGetAsEntry ? item.webkitGetAsEntry() : null))
+      .filter(Boolean);
+    if (!entries.length) return Array.from(dataTransfer.files || [], (f) => ({ path: f.name, file: f }));
+    const out = [];
+    const walk = async (entry, prefix) => {
+      if (entry.isFile) {
+        const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+        out.push({ path: prefix + entry.name, file });
+      } else if (entry.isDirectory) {
+        const reader = entry.createReader();
+        for (;;) {
+          const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+          if (!batch.length) break;
+          for (const child of batch) await walk(child, prefix + entry.name + '/');
+        }
+      }
+    };
+    for (const entry of entries) await walk(entry, '');
+    return out;
+  }
+
+  const JUNK = /(^|\/)(\.ds_store|thumbs\.db|desktop\.ini|\._[^/]*)$/i;
+
+  // Picks the game files out of whatever folder the visitor chose.
+  function analyze(list) {
+    let root = null;
+    for (const { path } of list) {
+      const parts = path.split('/');
+      if (parts[parts.length - 1].toLowerCase() !== 'master.dat') continue;
+      const dir = parts.slice(0, -1).join('/');
+      if (root === null || dir.split('/').length < root.split('/').length) root = dir;
+    }
+    if (root === null) {
+      return { error: "That folder doesn't contain master.dat. Pick the Fallout 2 folder itself, the one with master.dat, critter.dat and the data folder." };
+    }
+    const prefix = root ? root + '/' : '';
+    const files = [];
+    const saves = [];
+    for (const { path, file } of list) {
+      if (!path.startsWith(prefix) || JUNK.test(path)) continue;
+      const rel = path.slice(prefix.length);
+      const lower = rel.toLowerCase();
+      if (lower.startsWith('data/savegame/')) {
+        saves.push({ path: 'data/savegame/' + rel.slice('data/savegame/'.length), file });
+      } else if (lower.startsWith('data/') || lower.startsWith('sound/')) {
+        files.push({ path: rel, file });
+      } else if (!lower.includes('/') && (/^(master|critter|f2_res)\.dat$/.test(lower) || /^patch\d{3}\.dat$/.test(lower) || CONFIG_NAMES.includes(lower))) {
+        files.push({ path: rel, file });
+      }
+    }
+    const find = (name) => files.find((f) => f.path.toLowerCase() === name);
+    const music = files.find((f) => /(^|\/)sound\/music\/[^/]+\.acm$/i.test(f.path));
+    return {
+      root,
+      folderName: root.split('/').pop() || 'Fallout 2',
+      files,
+      saves,
+      total: files.reduce((n, f) => n + f.file.size, 0),
+      master: find('master.dat'),
+      critter: find('critter.dat'),
+      patch: find('patch000.dat'),
+      hasData: files.some((f) => f.path.toLowerCase().startsWith('data/')),
+      musicDir: music ? music.path.slice(0, music.path.lastIndexOf('/') + 1) : '',
+    };
+  }
+
+  // Fallout 2 .dat archives end with [tree size][archive size].
+  async function looksLikeDat2(file) {
+    if (!file || file.size < 16) return false;
+    const tail = new DataView(await file.slice(file.size - 8).arrayBuffer());
+    const treeSize = tail.getUint32(0, true);
+    const dataSize = tail.getUint32(4, true);
+    return dataSize === file.size && treeSize >= 4 && treeSize < file.size;
+  }
+
+  async function validate(a) {
+    if (a.error) throw new Error(a.error);
+    if (!a.critter) throw new Error('critter.dat is missing from that folder. It sits next to master.dat in every Fallout 2 install.');
+    if (!(await looksLikeDat2(a.master.file)) || !(await looksLikeDat2(a.critter.file))) {
+      throw new Error("master.dat or critter.dat isn't a Fallout 2 archive. Fallout 1 and some mods use a different format, so pick a Fallout 2 folder.");
+    }
+    const notes = [];
+    if (!a.patch) notes.push('patch000.dat is missing, so the game runs unpatched.');
+    if (!a.musicDir) notes.push('No music found (data/sound/music). The game works, just silently.');
+    return notes;
+  }
+
+  // ----------------------------------------------------------- game storage
+  let installMeta = null;
+
+  async function refreshStatus() {
+    installMeta = (await tx('meta', 'readonly', (s) => s.get('install'))) || null;
+    if (installMeta) {
+      setStatus('st-files', fmtBytes(installMeta.bytes) + ' · ' + plural(installMeta.files, 'file', 'files'), 'ok');
+      $('play').textContent = '▶ PLAY';
+      $('play').onclick = () => play({});
+      showPanel('ready');
+    } else {
+      setStatus('st-files', 'not added yet', 'warn');
+      showPanel('empty');
+    }
+    await refreshSaveCount();
+    refreshStorage();
+  }
+
+  async function refreshSaveCount() {
+    const keys = await tx('saves', 'readonly', (s) => s.getAllKeys());
+    const slots = new Set();
+    for (const k of keys) {
+      const m = String(k).match(/^data\/savegame\/(slot\d+)\//i);
+      if (m) slots.add(m[1].toLowerCase());
+    }
+    setStatus('st-saves', slots.size ? plural(slots.size, 'slot', 'slots') : 'none yet', slots.size ? 'ok' : '');
+    return slots.size;
+  }
+
+  async function refreshStorage() {
+    if (!navigator.storage || !navigator.storage.estimate) return;
+    try {
+      const est = await navigator.storage.estimate();
+      const persisted = navigator.storage.persisted ? await navigator.storage.persisted() : false;
+      $('storage').textContent = 'storage ' + fmtBytes(est.usage || 0) + ' / ' + fmtBytes(est.quota || 0) + (persisted ? ' · kept' : '');
+    } catch (e) {
+      // estimate() can be unavailable in some private modes
+    }
+  }
+
+  async function clearGameFiles() {
+    await tx(['files', 'pieces', 'meta'], 'readwrite', (files, pieces, meta) => {
+      files.clear();
+      pieces.clear();
+      meta.delete('install');
+    });
+  }
+
+  async function importGame(a) {
+    showMessage('');
+    showPanel('import');
+    const setProgress = (done, label) => {
+      const pct = a.total ? Math.floor((done / a.total) * 100) : 100;
+      $('imp-pct').textContent = pct + '%';
+      $('imp-bar').style.width = pct + '%';
+      $('imp-file').textContent = label;
+      $('imp-bytes').textContent = fmtBytes(done) + ' / ' + fmtBytes(a.total);
+    };
+    setProgress(0, 'preparing…');
+
+    if (navigator.storage && navigator.storage.estimate) {
+      try {
+        const est = await navigator.storage.estimate();
+        const reclaim = installMeta ? installMeta.bytes : 0;
+        if (est.quota && est.quota - est.usage + reclaim < a.total * 1.05) {
+          const err = new Error('This browser only offers ' + fmtBytes(est.quota - est.usage + reclaim) + ' of storage here, and the game needs ' + fmtBytes(a.total) + '.');
+          err.name = 'QuotaExceededError';
+          throw err;
+        }
+      } catch (e) {
+        if (e.name === 'QuotaExceededError') throw e;
+      }
+    }
+    if (navigator.storage && navigator.storage.persist) {
+      navigator.storage.persist().catch(() => {});
+    }
+
+    await clearGameFiles();
+    let done = 0;
+    let batch = [];
+    let batchBytes = 0;
+    const flush = async () => {
+      if (!batch.length) return;
+      const items = batch;
+      batch = [];
+      batchBytes = 0;
+      await tx('pieces', 'readwrite', (s) => {
+        for (const item of items) s.put(item);
+      });
+    };
+    const records = [];
+    try {
+      for (const f of a.files) {
+        const pieces = Math.max(1, Math.ceil(f.file.size / PIECE_BYTES));
+        for (let i = 0; i < pieces; i++) {
+          const blob = f.file.slice(i * PIECE_BYTES, Math.min(f.file.size, (i + 1) * PIECE_BYTES));
+          batch.push({ path: f.path, index: i, blob });
+          batchBytes += blob.size;
+          if (batchBytes >= PIECE_BYTES || batch.length >= 200) {
+            setProgress(done, f.path);
+            await flush();
+          }
+          done += blob.size;
+        }
+        records.push({ path: f.path, size: f.file.size, pieces });
+      }
+      setProgress(done, 'finishing…');
+      await flush();
+      const existingSaves = await refreshSaveCount();
+      let importedSaves = 0;
+      if (a.saves.length && existingSaves === 0) {
+        const saveRecords = [];
+        for (const s of a.saves) {
+          saveRecords.push({ path: s.path, data: new Uint8Array(await s.file.arrayBuffer()), mtime: s.file.lastModified || Date.now() });
+        }
+        await tx('saves', 'readwrite', (store) => saveRecords.forEach((r) => store.put(r)));
+        importedSaves = a.saves.length;
+      }
+      const meta = {
+        files: records.length,
+        bytes: a.total,
+        folder: a.folderName,
+        musicDir: a.musicDir,
+        importedAt: Date.now(),
+      };
+      await tx(['files', 'meta'], 'readwrite', (files, metaStore) => {
+        for (const r of records) files.put(r);
+        metaStore.put(meta, 'install');
+      });
+      return { importedSaves, skippedSaves: existingSaves && a.saves.length ? a.saves.length : 0 };
+    } catch (e) {
+      await clearGameFiles().catch(() => {});
+      throw e;
+    }
+  }
+
+  async function loadStoredFiles() {
+    const [records, pieces] = await Promise.all([
+      tx('files', 'readonly', (s) => s.getAll()),
+      tx('pieces', 'readonly', (s) => s.getAll()),
+    ]);
+    const byPath = new Map();
+    for (const p of pieces) {
+      if (!byPath.has(p.path)) byPath.set(p.path, []);
+      byPath.get(p.path).push(p);
+    }
+    return records.map((r) => {
+      const parts = (byPath.get(r.path) || []).sort((x, y) => x.index - y.index);
+      const blob = parts.length === 1 ? parts[0].blob : new Blob(parts.map((p) => p.blob));
+      if (parts.length !== r.pieces || blob.size !== r.size) {
+        throw new Error('The stored copy of ' + r.path + ' is incomplete. Use "Replace game files" to add the folder again.');
+      }
+      return { path: r.path, blob };
+    });
+  }
+
+  // ------------------------------------------------------------------ saves
+  async function exportSaves() {
+    if (gameModule) persistSaves();
+    await persistChain;
+    const records = await tx('saves', 'readonly', (s) => s.getAll());
+    const entries = records
+      .filter((r) => /^data\/savegame\//i.test(r.path))
+      .map((r) => ({ name: 'SAVEGAME/' + r.path.slice('data/savegame/'.length), data: r.data, mtime: r.mtime }));
+    if (!entries.length) {
+      toast('No saves yet.');
+      return;
+    }
+    download(makeZip(entries), 'fallout2-saves-' + new Date().toISOString().slice(0, 10) + '.zip');
+  }
+
+  async function importSavesZip(file) {
+    const entries = await readZip(file);
+    const records = [];
+    for (const e of entries) {
+      const name = e.name.replace(/\\/g, '/');
+      const m = name.match(/(?:^|\/)savegame\/(.+)$/i) || name.match(/^(slot\d+\/.+)$/i);
+      if (m) records.push({ path: 'data/savegame/' + m[1], data: e.data, mtime: Date.now() });
+    }
+    if (!records.length) throw new Error('No Fallout 2 save slots (SLOT01, SLOT02, …) in that zip.');
+    await tx('saves', 'readwrite', (s) => records.forEach((r) => s.put(r)));
+    const slots = await refreshSaveCount();
+    toast('Loaded ' + plural(records.length, 'file', 'files') + ' · ' + plural(slots, 'slot', 'slots') + ' in this browser now.');
+  }
+
+  // ------------------------------------------------------------ game runner
+  let gameModule = null;
+  let gameRunning = false;
+  let releaseLock = null;
+  const engineMessages = [];
+  const engineLog = [];
+  const persisted = new Map();
+  let persistChain = Promise.resolve();
+
+  function bootLog(line) {
+    const el = $('boot-log');
+    el.textContent += (el.textContent ? '\n' : '') + line;
+  }
+
+  function resolution() {
+    if (settings.res === 'auto') {
+      const aspect = window.innerWidth / Math.max(1, window.innerHeight);
+      if (aspect <= 4 / 3) return [640, 480];
+      return [Math.min(1920, Math.round((480 * aspect) / 2) * 2), 480];
+    }
+    const m = /^(\d+)x(\d+)$/.exec(settings.res);
+    return m ? [+m[1], +m[2]] : [640, 480];
+  }
+
+  function buildConfigs(texts, saves, meta) {
+    const savedCfg = saves.find((s) => s.path.toLowerCase() === 'fallout2.cfg');
+    const cfg = parseIni(savedCfg ? new TextDecoder().decode(savedCfg.data) : texts['fallout2.cfg']);
+    iniSet(cfg, 'system', 'master_dat', 'master.dat');
+    iniSet(cfg, 'system', 'critter_dat', 'critter.dat');
+    iniSet(cfg, 'system', 'master_patches', 'data');
+    iniSet(cfg, 'system', 'critter_patches', 'data');
+    iniSet(cfg, 'debug', 'mode', DEBUG ? 'screen' : 'environment');
+    if (meta.musicDir) {
+      const dir = meta.musicDir.replace(/\//g, '\\');
+      iniSet(cfg, 'sound', 'music_path1', dir);
+      iniSet(cfg, 'sound', 'music_path2', dir);
+    }
+
+    const [w, h] = resolution();
+    const res = parseIni(texts['f2_res.ini']);
+    iniSet(res, 'MAIN', 'SCR_WIDTH', w);
+    iniSet(res, 'MAIN', 'SCR_HEIGHT', h);
+    iniSet(res, 'MAIN', 'WINDOWED', 1);
+    iniSet(res, 'MAIN', 'SCALE_2X', 0);
+
+    const sfall = parseIni(texts['ddraw.ini']);
+    iniSet(sfall, 'Misc', 'SkipOpeningMovies', settings.skipIntro ? 1 : 0);
+
+    return {
+      'fallout2.cfg': serializeIni(cfg),
+      'f2_res.ini': serializeIni(res),
+      'ddraw.ini': serializeIni(sfall),
+    };
+  }
+
+  async function preparePlan(files, saves, meta) {
+    const texts = {};
+    const mount = [];
+    const small = [];
+    for (const f of files) {
+      const lower = f.path.toLowerCase();
+      if (CONFIG_NAMES.includes(lower)) {
+        texts[lower] = await f.blob.text();
+      } else if (f.blob.size <= SMALL_FILE) {
+        small.push(f);
+      } else {
+        mount.push({ path: f.path, blob: f.blob });
+      }
+    }
+    for (let i = 0; i < small.length; i += 32) {
+      const chunk = small.slice(i, i + 32);
+      const datas = await Promise.all(chunk.map((f) => f.blob.arrayBuffer()));
+      chunk.forEach((f, j) => mount.push({ path: f.path, data: new Uint8Array(datas[j]) }));
+    }
+    return { mount, configs: buildConfigs(texts, saves, meta), saves };
+  }
+
+  function mountGame(M, plan) {
+    const FS = M.FS;
+    const mkdirp = (dir) => {
+      let cur = '';
+      for (const part of dir.split('/')) {
+        if (!part) continue;
+        cur += '/' + part;
+        if (!FS.analyzePath(cur).exists) FS.mkdir(cur);
+      }
+    };
+    const dirname = (p) => p.slice(0, p.lastIndexOf('/'));
+    mkdirp('/game');
+    for (const item of plan.mount) {
+      const full = '/game/' + item.path;
+      mkdirp(dirname(full));
+      if (item.blob) M.F2WEB.createBlobFile(full, item.blob);
+      else FS.writeFile(full, item.data);
+    }
+    for (const dir of ['data/savegame', 'data/maps', 'data/proto/critters', 'data/proto/items']) {
+      mkdirp('/game/' + dir);
+    }
+    for (const [name, text] of Object.entries(plan.configs)) {
+      FS.writeFile('/game/' + name, text);
+    }
+    for (const s of plan.saves) {
+      if (s.path.toLowerCase() === 'fallout2.cfg') continue;
+      const full = '/game/' + s.path;
+      mkdirp(dirname(full));
+      FS.writeFile(full, s.data);
+      try {
+        FS.utime(full, s.mtime, s.mtime);
+      } catch (e) {
+        // keep going: the timestamp only matters for change tracking
+      }
+      persisted.set(s.path, s.mtime + ':' + s.data.length);
+    }
+    FS.chdir('/game');
+  }
+
+  // Copies changed save files (and the game's own config) from the running
+  // game into IndexedDB. Snapshotting is synchronous, so it is consistent with
+  // whatever the engine finished writing; the database write happens after.
+  function persistSaves() {
+    const M = gameModule;
+    if (!M || !M.FS) return persistChain;
+    const FS = M.FS;
+    const found = [];
+    const walk = (dir, rel) => {
+      let names;
+      try {
+        names = FS.readdir(dir);
+      } catch (e) {
+        return;
+      }
+      for (const name of names) {
+        if (name === '.' || name === '..') continue;
+        const full = dir + '/' + name;
+        const st = FS.stat(full);
+        if (FS.isDir(st.mode)) walk(full, rel + name + '/');
+        else found.push({ path: rel + name, full, mtime: st.mtime.getTime(), size: st.size });
+      }
+    };
+    try {
+      walk('/game/data/savegame', 'data/savegame/');
+      try {
+        const st = FS.stat('/game/fallout2.cfg');
+        found.push({ path: 'fallout2.cfg', full: '/game/fallout2.cfg', mtime: st.mtime.getTime(), size: st.size });
+      } catch (e) {
+        // no config written yet
+      }
+    } catch (e) {
+      console.warn('f2ce: could not scan saves', e);
+      return persistChain;
+    }
+    const puts = [];
+    const seen = new Set();
+    for (const f of found) {
+      seen.add(f.path);
+      const stamp = f.mtime + ':' + f.size;
+      if (persisted.get(f.path) === stamp) continue;
+      puts.push({ path: f.path, data: FS.readFile(f.full), mtime: f.mtime });
+      persisted.set(f.path, stamp);
+    }
+    const dels = [];
+    for (const path of persisted.keys()) {
+      if (!seen.has(path)) dels.push(path);
+    }
+    dels.forEach((p) => persisted.delete(p));
+    if (!puts.length && !dels.length) return persistChain;
+    persistChain = persistChain
+      .then(() => tx('saves', 'readwrite', (s) => {
+        puts.forEach((r) => s.put(r));
+        dels.forEach((p) => s.delete(p));
+      }))
+      .then(() => refreshSaveCount())
+      .catch((e) => {
+        console.error('f2ce: saving to browser storage failed', e);
+        toast('Could not store your save in the browser (' + (e.name || 'error') + '). Use Saves → download to keep it.', 8000);
+        // Forget what we thought was stored so the next attempt retries.
+        puts.forEach((r) => persisted.delete(r.path));
+      });
+    return persistChain;
+  }
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('Could not load the game engine (' + src + '). Check your connection and reload.'));
+      document.head.appendChild(s);
+    });
+  }
+
+  function fitCanvas() {
+    const canvas = $('canvas');
+    const stage = $('stage');
+    const w = canvas.width;
+    const h = canvas.height;
+    if (!w || !h) return;
+    let scale = Math.min(stage.clientWidth / w, stage.clientHeight / h);
+    if (settings.scale === 'int' && scale >= 1) scale = Math.floor(scale);
+    canvas.style.width = Math.floor(w * scale) + 'px';
+    canvas.style.height = Math.floor(h * scale) + 'px';
+  }
+
+  function showOverlay(title, text, buttons, bad) {
+    $('ov-title').textContent = title;
+    $('ov-text').textContent = text;
+    $('ov-box').className = 'box' + (bad ? ' bad' : '');
+    const actions = $('ov-actions');
+    actions.textContent = '';
+    for (const [label, fn, cls] of buttons) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn' + (cls ? ' ' + cls : '');
+      b.textContent = label;
+      b.addEventListener('click', fn);
+      actions.appendChild(b);
+    }
+    $('overlay').hidden = false;
+  }
+
+  const backToMenu = () => location.reload();
+
+  function engineStopped(status) {
+    if (!gameRunning) return;
+    gameRunning = false;
+    persistSaves();
+    persistChain.finally(() => {
+      if (releaseLock) releaseLock();
+    });
+    $('boot').hidden = true;
+    const messages = engineMessages.filter(Boolean);
+    if (messages.length || status) {
+      const text = (messages.length ? messages.join('\n\n') : 'The game stopped with exit code ' + status + '.') +
+        '\n\nIf this happened right at the start, the folder may be incomplete. Try "Replace game files" with a fresh copy.';
+      showOverlay('Game stopped', text, [['Back to menu', backToMenu, 'primary'], ['Download saves', () => exportSaves()]], true);
+    } else {
+      showOverlay('Game closed', 'Your saves are stored in this browser.', [['Back to menu', backToMenu, 'primary'], ['Download saves', () => exportSaves()]]);
+    }
+  }
+
+  function engineCrashed(what) {
+    if (!gameRunning) return;
+    gameRunning = false;
+    try {
+      persistSaves();
+    } catch (e) {
+      // the runtime may be unusable; saves written so far are already stored
+    }
+    $('boot').hidden = true;
+    const tail = engineLog.slice(-8).join('\n');
+    showOverlay('The game crashed',
+      String(what && what.message ? what.message : what) + (tail ? '\n\nLast engine output:\n' + tail : '') +
+      '\n\nSaves made before the crash are kept.',
+      [['Back to menu', backToMenu, 'primary'], ['Download saves', () => exportSaves()]], true);
+  }
+
+  async function startGame(source, audioContext) {
+    gameRunning = true;
+    document.body.classList.add('running');
+    $('loader').hidden = true;
+    $('stage').hidden = false;
+    $('boot').hidden = false;
+    $('boot-log').textContent = '';
+    window.alert = (text) => {
+      engineMessages.push(String(text).trim());
+      console.warn('[game] ' + text);
+    };
+
+    try {
+      bootLog('> reading game files…');
+      const files = source.files || (await loadStoredFiles());
+      const saves = await tx('saves', 'readonly', (s) => s.getAll());
+      const meta = source.meta || installMeta;
+      const plan = await preparePlan(files, saves, meta);
+      const blobBytes = plan.mount.reduce((n, m) => n + (m.blob ? m.blob.size : m.data.length), 0);
+      bootLog('> ' + plural(plan.mount.length, 'file', 'files') + ', ' + fmtBytes(blobBytes) + ' mapped (read on demand)');
+      bootLog('> loading engine…');
+      await loadScript(ENGINE_SCRIPT + '?v=' + BUILD);
+      bootLog('> starting…');
+
+      const canvas = $('canvas');
+      new MutationObserver(() => {
+        fitCanvas();
+        $('boot').hidden = true;
+      }).observe(canvas, { attributes: true, attributeFilter: ['width', 'height'] });
+
+      await window.createFallout2CE({
+        canvas,
+        SDL2: audioContext ? { audioContext } : undefined,
+        arguments: [],
+        locateFile: (path) => path + '?v=' + BUILD,
+        print: (line) => {
+          engineLog.push(line);
+          if (engineLog.length > 200) engineLog.shift();
+          console.log('[f2ce]', line);
+        },
+        printErr: (line) => {
+          engineLog.push(line);
+          if (engineLog.length > 200) engineLog.shift();
+          console.warn('[f2ce]', line);
+        },
+        preRun: [(M) => {
+          gameModule = M;
+          if (DEBUG) window.f2ce = M;
+          mountGame(M, plan);
+        }],
+        onGameSaved: () => persistSaves(),
+        onConfigSaved: () => persistSaves(),
+        onExit: (status) => engineStopped(status),
+        onAbort: (what) => engineCrashed(what),
+      });
+      fitCanvas();
+    } catch (e) {
+      console.error(e);
+      engineCrashed(e);
+    }
+  }
+
+  function play(source) {
+    // Created during the click, so browsers let it play sound right away.
+    let audioContext = null;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioContext = new AC();
+    } catch (e) {
+      audioContext = null;
+    }
+    const run = () => new Promise((resolve) => {
+      releaseLock = resolve;
+      startGame(source, audioContext);
+    });
+    if (navigator.locks && navigator.locks.request) {
+      navigator.locks.request('f2ce-game', { ifAvailable: true }, (lock) => {
+        if (!lock) {
+          showMessage("The game is already running in another tab. Close it there first, so the two copies don't overwrite each other's saves.", 'warn');
+          return null;
+        }
+        return run();
+      });
+    } else {
+      run();
+    }
+  }
+
+  // ------------------------------------------------------------ in-game UI
+  let hudTimer = 0;
+  function pokeHud() {
+    const hud = $('hud');
+    hud.classList.add('show');
+    clearTimeout(hudTimer);
+    hudTimer = setTimeout(() => hud.classList.remove('show'), 2200);
+  }
+
+  function toggleFullscreen() {
+    const stage = $('stage');
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      return;
+    }
+    const req = stage.requestFullscreen || stage.webkitRequestFullscreen;
+    if (!req) {
+      toast('Fullscreen is not available in this browser.');
+      return;
+    }
+    Promise.resolve(req.call(stage, { navigationUI: 'hide' })).then(() => {
+      // Chrome: let Esc and other keys reach the game while fullscreen.
+      if (navigator.keyboard && navigator.keyboard.lock) navigator.keyboard.lock().catch(() => {});
+    }).catch(() => toast('The browser refused fullscreen.'));
+  }
+
+  // Browser shortcuts that clash with the game's keys.
+  const BLOCKED_CTRL = new Set(['s', 'l', 'p', 'q', 'x', 'd', 'f', 'g', 'h', 'j', 'k', 'o', 'r', 'u', 'e', 'b', 'a']);
+  window.addEventListener('keydown', (e) => {
+    if (!gameRunning || !$('overlay').hidden) return;
+    if (/^F([1-9]|10|12)$/.test(e.key)) {
+      e.preventDefault();
+    } else if ((e.ctrlKey || e.metaKey) && e.key.length === 1 && BLOCKED_CTRL.has(e.key.toLowerCase())) {
+      e.preventDefault();
+    }
+  }, true);
+
+  window.addEventListener('beforeunload', (e) => {
+    if (!gameRunning) return;
+    persistSaves();
+    e.preventDefault();
+    e.returnValue = '';
+  });
+  window.addEventListener('pagehide', () => {
+    if (gameRunning) persistSaves();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (gameRunning && document.visibilityState === 'hidden') persistSaves();
+  });
+  setInterval(() => {
+    if (gameRunning) persistSaves();
+  }, 30000);
+  window.addEventListener('resize', fitCanvas);
+  document.addEventListener('fullscreenchange', fitCanvas);
+  document.addEventListener('webkitfullscreenchange', fitCanvas);
+  window.addEventListener('error', (e) => {
+    if (!gameRunning) return;
+    const text = String((e.error && e.error.message) || e.message || '');
+    if (/ExitStatus|^unwind$/.test(text)) return;
+    if (e.error instanceof WebAssembly.RuntimeError) engineCrashed(e.error);
+  });
+
+  // ------------------------------------------------------------------ setup
+  async function handleFolder(list) {
+    try {
+      const a = analyze(list);
+      const notes = await validate(a);
+      const result = await importGame(a);
+      await refreshStatus();
+      const lines = ['Added ' + fmtBytes(a.total) + ' of game files from "' + a.folderName + '".'];
+      if (result.importedSaves) lines.push('Brought in ' + plural(result.importedSaves, 'save file', 'save files') + ' from that folder.');
+      if (result.skippedSaves) lines.push("Left that folder's saves alone because this browser already has saves. Zip them and use \"Load saves\" to bring them in.");
+      showMessage(lines.concat(notes).join('\n'), notes.length ? 'warn' : '');
+    } catch (e) {
+      console.error(e);
+      await refreshStatus().catch(() => {});
+      if (e.name === 'QuotaExceededError') {
+        showMessage(e.message + '\nYou can still play this time without storing the files; you\'d pick the folder again on your next visit. Saves are kept either way.', 'warn');
+        offerSessionPlay(list);
+      } else {
+        showMessage(e.message || String(e), 'bad');
+      }
+    }
+  }
+
+  function offerSessionPlay(list) {
+    const a = analyze(list);
+    if (a.error) return;
+    showPanel('ready');
+    $('play').textContent = '▶ PLAY WITHOUT STORING';
+    $('play').onclick = () => play({
+      files: a.files.map((f) => ({ path: f.path, blob: f.file })),
+      meta: { musicDir: a.musicDir },
+    });
+  }
+
+  function wire() {
+    const resSel = $('opt-res');
+    const scaleSel = $('opt-scale');
+    const skip = $('opt-skip');
+    resSel.value = settings.res;
+    if (!resSel.value) resSel.value = settings.res = '640x480';
+    scaleSel.value = settings.scale;
+    skip.checked = !!settings.skipIntro;
+    resSel.addEventListener('change', () => { settings.res = resSel.value; saveSettings(); });
+    scaleSel.addEventListener('change', () => { settings.scale = scaleSel.value; saveSettings(); fitCanvas(); });
+    skip.addEventListener('change', () => { settings.skipIntro = skip.checked; saveSettings(); });
+
+    $('play').onclick = () => play({});
+
+    for (const id of ['pick-folder', 'pick-folder2']) {
+      $(id).addEventListener('change', async (e) => {
+        const list = await collectFromInput(e.target.files);
+        e.target.value = '';
+        if (list.length) handleFolder(list);
+      });
+    }
+
+    const drop = $('drop');
+    drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
+    drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+    drop.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      drop.classList.remove('over');
+      try {
+        const list = await collectFromDrop(e.dataTransfer);
+        if (list.length) handleFolder(list);
+      } catch (err) {
+        showMessage('Could not read the dropped folder: ' + (err.message || err), 'bad');
+      }
+    });
+    // Dropping outside the box shouldn't navigate away.
+    window.addEventListener('dragover', (e) => e.preventDefault());
+    window.addEventListener('drop', (e) => e.preventDefault());
+
+    $('btn-export').addEventListener('click', () => exportSaves().catch((e) => toast(e.message)));
+    $('pick-saves').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      try {
+        await importSavesZip(file);
+      } catch (err) {
+        showMessage(err.message || String(err), 'bad');
+      }
+    });
+    $('btn-forget').addEventListener('click', async () => {
+      const size = installMeta ? ' (' + fmtBytes(installMeta.bytes) + ')' : '';
+      if (!confirm('Remove the game files' + size + ' from this browser?\n\nYour saves stay unless you also remove them in the next step.')) return;
+      await clearGameFiles();
+      const slots = await refreshSaveCount();
+      if (slots && confirm('Game files removed. Also delete the ' + plural(slots, 'save slot', 'save slots') + ' stored here? This cannot be undone. Download them first if you want to keep them.')) {
+        await tx('saves', 'readwrite', (s) => s.clear());
+      }
+      showMessage('');
+      await refreshStatus();
+    });
+
+    const canvas = $('canvas');
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    $('stage').addEventListener('mousemove', (e) => {
+      const rect = $('stage').getBoundingClientRect();
+      if (e.clientY - rect.top < 80 && rect.right - e.clientX < 320) pokeHud();
+    });
+    $('hud-full').addEventListener('click', () => { toggleFullscreen(); canvas.focus(); });
+    $('hud-saves').addEventListener('click', () => { exportSaves().catch((e) => toast(e.message)); canvas.focus(); });
+    $('hud-exit').addEventListener('click', () => {
+      if (confirm('Leave the game? Anything since your last save is lost.')) {
+        persistSaves();
+        persistChain.finally(() => {
+          gameRunning = false;
+          location.reload();
+        });
+      }
+    });
+  }
+
+  async function init() {
+    wire();
+    const problems = [];
+    if (typeof WebAssembly !== 'object') problems.push('WebAssembly');
+    if (!window.indexedDB) problems.push('IndexedDB');
+    if (problems.length) {
+      setStatus('st-browser', 'missing ' + problems.join(', '), 'bad');
+      showMessage('This browser lacks ' + problems.join(' and ') + '. Try a current Chrome, Edge, Firefox or Safari.', 'bad');
+      return;
+    }
+    try {
+      db = await openDB();
+    } catch (e) {
+      setStatus('st-browser', 'storage blocked', 'bad');
+      showMessage('Browser storage is unavailable (' + (e.message || e) + '). Private windows often block it; a normal window works.', 'bad');
+      return;
+    }
+    const dirPick = 'webkitdirectory' in document.createElement('input');
+    setStatus('st-browser', dirPick ? 'ok' : 'ok · folder picking unsupported, drag the folder in', dirPick ? 'ok' : 'warn');
+    await refreshStatus();
+  }
+
+  init().catch((e) => {
+    console.error(e);
+    showMessage(e.message || String(e), 'bad');
+  });
+})();
+</script>
+</body>
+</html>

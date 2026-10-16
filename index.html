@@ -376,6 +376,13 @@
   <section class="group" id="arcade" aria-labelledby="arcade-head">
     <p class="sec-head" id="arcade-head">== <b>arcade</b> ==</p>
     <div class="cards">
+      <a class="card wide" href="/imperium/" rel="noopener">
+        <h3>imperium</h3>
+        <span class="meta">rts · rome vs carthage, gauls, germani · plays offline</span>
+        <p>Legions, galleys and the tribes beyond the sea. Farm and fish, build a fleet, ship your army across,
+          lock shields into a testudo, and send your ruler out to win the enemy over — but keep the people happy.</p>
+        <span class="badge play">playable</span>
+      </a>
       <a class="card" href="/steppe/" rel="noopener">
         <h3>steppe</h3>
         <span class="meta">rts · 1–3 ai rivals · plays offline</span>
@@ -428,6 +435,7 @@
     <p class="row">trip&nbsp;&nbsp;&nbsp;→ <a href="/itinerary/">termit.dev/itinerary</a></p>
     <p class="row">steppe→ <a href="/steppe/">termit.dev/steppe</a></p>
     <p class="row">cobalt→ <a href="/cobalt/">termit.dev/cobalt</a></p>
+    <p class="row">rome&nbsp;&nbsp;&nbsp;→ <a href="/imperium/">termit.dev/imperium</a></p>
     <p class="row">f2ce&nbsp;&nbsp;&nbsp;→ <a href="/f2ce/">termit.dev/f2ce</a></p>
   </section>
 
@@ -633,6 +641,7 @@ const COMMANDS = {
     addLine('  <span class="bright">pounce</span>      hand the tablet to a cat');
     addLine('  <span class="bright">steppe</span>      pikes, muskets and windmills');
     addLine('  <span class="bright">cobalt</span>      base building after the bombs');
+    addLine('  <span class="bright">rome</span>        legions, galleys and the testudo');
     addLine('  <span class="bright">fallout</span>     fallout 2 in a tab, bring your own files');
     addLine('  <span class="bright">arcade</span>      everything you can play here');
     addLine('  <span class="bright">lists</span>       checklists, stored nowhere but here');
@@ -644,7 +653,7 @@ const COMMANDS = {
     addLine('  <span class="dim">…and a few that aren\u2019t listed. rabbit holes exist.</span>');
   },
   ls() {
-    addLine('<span class="bright">probe/</span>  <span class="bright">trace/</span>  <span class="bright">wire/</span>  <span class="bright">handshake/</span>  <span class="bright">pnw/</span>  <span class="bright">diagram/</span>  <span class="bright">itinerary/</span>  <span class="bright">lists/</span>  <span class="bright">steppe/</span>  <span class="bright">cobalt/</span>  <span class="bright">f2ce/</span>  <span class="bright">colony/</span>  <span class="bright">pounce/</span>');
+    addLine('<span class="bright">probe/</span>  <span class="bright">trace/</span>  <span class="bright">wire/</span>  <span class="bright">handshake/</span>  <span class="bright">pnw/</span>  <span class="bright">diagram/</span>  <span class="bright">itinerary/</span>  <span class="bright">lists/</span>  <span class="bright">steppe/</span>  <span class="bright">cobalt/</span>  <span class="bright">imperium/</span>  <span class="bright">f2ce/</span>  <span class="bright">colony/</span>  <span class="bright">pounce/</span>');
   },
   chart() {
     addLine('→ <a href="https://chart.termit.dev" rel="noopener">https://chart.termit.dev</a> <span class="dim">// sankey diagram studio</span>');
@@ -693,6 +702,7 @@ const COMMANDS = {
     addLine('<span class="dim">insert coin:</span>');
     addLine('  <a href="/steppe/">steppe</a>   <span class="dim">rts on the open steppe</span>');
     addLine('  <a href="/cobalt/">cobalt</a>   <span class="dim">post-atomic base building</span>');
+    addLine('  <a href="/imperium/">rome</a>     <span class="dim">legions and galleys</span>');
     addLine('  <a href="/f2ce/">f2ce</a>     <span class="dim">fallout 2, your own game files</span>');
     addLine('  <a href="/colony/">colony</a>   <span class="dim">program the termites</span>');
     addLine('  <a href="/pounce/">pounce</a>   <span class="dim">for cats only</span>');
@@ -706,6 +716,11 @@ const COMMANDS = {
     await typeLine('<span class="dim">spinning up the reactors…</span>', 22);
     addLine('→ <a href="/cobalt/">termit.dev/cobalt</a> <span class="dim">// mind the power bar</span>');
     setTimeout(() => { location.href = '/cobalt/'; }, 1200);
+  },
+  async rome() {
+    await typeLine('<span class="dim">launching the triremes…</span>', 22);
+    addLine('→ <a href="/imperium/">termit.dev/imperium</a> <span class="dim">// mare nostrum</span>');
+    setTimeout(() => { location.href = '/imperium/'; }, 1200);
   },
   async fallout() {
     await typeLine('<span class="dim">booting the wasteland…</span>', 22);
@@ -781,7 +796,8 @@ const ALIASES = { 'll': 'ls', 'ls projects': 'ls', 'open chart': 'chart', 'diagr
                   'games': 'arcade', 'ls games': 'arcade', 'insert coin': 'arcade',
                   'banners': 'steppe', 'cossacks': 'steppe', 'козаки': 'steppe', 'pikes': 'steppe', 'muskets': 'steppe',
                   'tanks': 'cobalt', 'rts': 'cobalt', 'ore': 'cobalt', 'crawler': 'cobalt',
-                  'f2ce': 'fallout', 'fallout2': 'fallout', 'fallout 2': 'fallout', 'vault': 'fallout', 'wasteland': 'fallout', 'pipboy': 'fallout' };
+                  'imperium': 'rome', 'imperium maris': 'rome', './imperium': 'rome', 'maris': 'rome', 'spqr': 'rome', 'legion': 'rome', 'legions': 'rome', 'testudo': 'rome', 'carthage': 'rome', 'trireme': 'rome', 'galley': 'rome', 'рим': 'rome',
+                  'f2ce': 'fallout', './f2ce': 'fallout', './steppe': 'steppe', './cobalt': 'cobalt', 'fallout2': 'fallout', 'fallout 2': 'fallout', 'vault': 'fallout', 'wasteland': 'fallout', 'pipboy': 'fallout' };
 
 function esc(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -882,7 +898,7 @@ async function boot() {
   await typeLine('<span class="ok">[ <b>OK</b> ] initializing termit.dev …</span>', 8);
   await typeLine('<span class="ok">[ <b>OK</b> ] mounting /dev/green …</span>', 8);
   await typeLine('<span class="ok">[ <b>OK</b> ] establishing uplink … <span class="dim">42ms</span></span>', 8);
-  await typeLine('<span class="ok">[ <b>OK</b> ] loading arcade … <span class="dim">5 cartridges</span></span>', 8);
+  await typeLine('<span class="ok">[ <b>OK</b> ] loading arcade … <span class="dim">6 cartridges</span></span>', 8);
   await pause(220);
   addLine('<span class="dim">last login: ' + new Date().toDateString() + ' from 127.0.0.1</span>');
   await pause(320);

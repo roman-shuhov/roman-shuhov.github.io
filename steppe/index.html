@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Steppe Banners</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,7 +19,10 @@
 }
 [hidden]{display:none!important}
 *,*::before,*::after{box-sizing:border-box}
-html,body{height:100%;margin:0;background:var(--earth);color:var(--linen);font-family:var(--f-ui);font-size:14px;overflow:hidden;overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;background:var(--earth);color:var(--linen);font-family:var(--f-ui);font-size:14px;overflow:hidden;overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-touch-callout:none;-webkit-text-size-adjust:100%}
+/* phones: no double-tap or pinch zoom on the HUD; overlays may still scroll */
+button,#top,#hud,#touch,#place,#msgs,#tip{touch-action:none}
+.ovl{touch-action:pan-y}
 #app{position:fixed;inset:0;overflow:hidden;background:var(--earth)}
 #cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
 button{font:inherit;color:inherit}
@@ -124,8 +127,8 @@ button{font:inherit;color:inherit}
 details summary{cursor:pointer;color:var(--ochre)}
 
 @media (max-width:760px){
-  #hud{grid-template-columns:auto minmax(0,1fr);grid-template-areas:'mm cmds' 'info info';gap:6px 8px;padding-top:7px;align-items:start}
-  #info{min-height:0}
+  #hud{grid-template-columns:auto minmax(0,1fr);grid-template-areas:'info info' 'mm cmds';gap:6px 8px;padding-top:7px;align-items:end}
+  #info{min-height:58px;max-height:150px;overflow:hidden}
   #info .por{width:44px;height:44px}
   #info h3{font-size:15px}
   #mmwrap{width:116px;height:116px}
@@ -287,7 +290,7 @@ const TECH = {
   hoops: { name: 'Iron Hoops', cost: { stone: 200, gold: 250 }, time: 50, key: 'Z', desc: 'Cannon range +2 tiles and damage +20%.' },
 };
 
-const MAX_POP = 250;
+const MAX_POP = 1000;
 const START_RES = [{ food: 500, wood: 500, stone: 300, gold: 200 }, { food: 2000, wood: 2000, stone: 1200, gold: 1200 }];
 const DIFF = [
   { name: 'Easy', gather: 0.8, think: 2.2, workers: 26, wave0: 5, waveK: 0.6, waveMax: 22, firstAtk: 600 },
@@ -1943,7 +1946,8 @@ const visibleTo0 = e => G.reveal || e.p === 0 || G.vis[tIdx(e.x, e.y)] === 1;
 // ---------- effects ----------
 function fxMuzzle(x, y, face, k) {
   G.fx.push({ k: 'flash', x, y, t: 0, life: .09, s: 6 * k, face });
-  for (let i = 0; i < 3 * k; i++) G.fx.push({ k: 'smoke', x: x + face * fr(0, 8), y: y + fr(-3, 3), vx: face * fr(8, 20) + G.wind * 6, vy: fr(-7, -1), t: 0, life: fr(1.8, 3.4) * Math.sqrt(k), s: fr(4, 6.5) * k, c: 228 });
+  const puffs = G.fx.length > 900 ? 1 : G.fx.length > 500 ? 2 : 3;
+  for (let i = 0; i < puffs * k; i++) G.fx.push({ k: 'smoke', x: x + face * fr(0, 8), y: y + fr(-3, 3), vx: face * fr(8, 20) + G.wind * 6, vy: fr(-7, -1), t: 0, life: fr(1.8, 3.4) * Math.sqrt(k), s: fr(4, 6.5) * k, c: 228 });
 }
 function fxHit(x, y) { G.fx.push({ k: 'spark', x, y, t: 0, life: .22, s: 3 }); }
 function fxDust(x, y) { G.fx.push({ k: 'dust', x, y, t: 0, life: .55, s: 4 }); }
@@ -1980,20 +1984,27 @@ function updProjs() {
 // ---------- separation between bodies ----------
 function heavy(u) { return u.act > 0 || u.t === 'cannon'; }
 function nudge(u, dx, dy) { const nx = u.x + dx, ny = u.y + dy; if (freeAt(nx, ny)) { u.x = nx; u.y = ny; } }
+function sepPair(u, v) {
+  if (v.inside || v.dead) return;
+  const rr = (UNIT[u.t].r + UNIT[v.t].r) * .82; let dx = v.x - u.x, dy = v.y - u.y; const dd = dx * dx + dy * dy;
+  if (dd >= rr * rr) return;
+  let d = Math.sqrt(dd); if (d < .01) { dx = fr(-1, 1); dy = fr(-1, 1); d = Math.hypot(dx, dy); }
+  const push = (rr - d) * .5, nx = dx / d, ny = dy / d;
+  const wu = heavy(u) ? .15 : 1, wv = heavy(v) ? .15 : 1, s = wu + wv;
+  nudge(u, -nx * push * 2 * wu / s, -ny * push * 2 * wu / s); nudge(v, nx * push * 2 * wv / s, ny * push * 2 * wv / s);
+}
+// pairwise push-apart: each unit checks only the hash cells its own small radius touches (no closures)
 function separate() {
-  const U = G.units;
+  const U = G.units, cs = SH.cs, cw = SH.cw, chh = SH.chh, st = SH.start, it = SH.items;
   for (let i = 0; i < U.length; i++) {
     const u = U[i]; if (u.inside || u.dead) continue;
-    const ru = UNIT[u.t].r;
-    shEach(u.x, u.y, ru + 12, v => {
-      if (v.id <= u.id || v.inside || v.dead) return;
-      const rr = (ru + UNIT[v.t].r) * .82; let dx = v.x - u.x, dy = v.y - u.y; const dd = dx * dx + dy * dy;
-      if (dd >= rr * rr) return;
-      let d = Math.sqrt(dd); if (d < .01) { dx = fr(-1, 1); dy = fr(-1, 1); d = Math.hypot(dx, dy); }
-      const push = (rr - d) * .5, nx = dx / d, ny = dy / d;
-      const wu = heavy(u) ? .15 : 1, wv = heavy(v) ? .15 : 1, s = wu + wv;
-      nudge(u, -nx * push * 2 * wu / s, -ny * push * 2 * wu / s); nudge(v, nx * push * 2 * wv / s, ny * push * 2 * wv / s);
-    });
+    const r = UNIT[u.t].r + 12;
+    const x0 = Math.max(0, ((u.x - r) / cs) | 0), x1 = Math.min(cw - 1, ((u.x + r) / cs) | 0);
+    const y0 = Math.max(0, ((u.y - r) / cs) | 0), y1 = Math.min(chh - 1, ((u.y + r) / cs) | 0);
+    for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) {
+      const c = cy * cw + cx;
+      for (let m = st[c], e = st[c + 1]; m < e; m++) { const v = U[it[m]]; if (v && v.id > u.id) sepPair(u, v); }
+    }
   }
 }
 
@@ -2006,7 +2017,7 @@ function tick() {
   for (const u of G.units) { u.ox = u.x; u.oy = u.y; }
   processPaths();
   for (let i = 0; i < G.units.length; i++) { const u = G.units[i]; if (!u.dead) updUnit(u); }
-  separate();
+  if (G.units.length < 400 || G.tick % 2 === 0) separate(); // big armies: resolve overlaps every other tick
   for (const b of G.blds.slice()) if (!b.dead) updBld(b);
   updProjs(); updFx();
   if (G.tick % 15 === 0) captures();
@@ -3289,6 +3300,8 @@ function frame(now) {
 window.addEventListener('resize', () => { resize(); layoutTouch(); hudDirty(); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) lastT = performance.now(); });
 if (window.matchMedia && matchMedia('(pointer: coarse)').matches) { IN.touch = true; $('touch').hidden = false; }
+// iOS Safari: stop pinch and double-tap page zoom so fast taps on build buttons stay taps
+for (const ev of ['gesturestart', 'gesturechange', 'gestureend', 'dblclick']) document.addEventListener(ev, e => e.preventDefault(), { passive: false });
 
 function boot(data) {
   loadPrefs();

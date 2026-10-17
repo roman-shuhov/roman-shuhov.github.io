@@ -376,12 +376,12 @@
   <section class="group" id="arcade" aria-labelledby="arcade-head">
     <p class="sec-head" id="arcade-head">== <b>arcade</b> ==</p>
     <div class="cards">
-      <a class="card wide" href="/imperium/" rel="noopener">
+      <a class="card wide" href="https://imperium-maris.com/" rel="noopener">
         <h3>imperium</h3>
-        <span class="meta">rts · rome vs carthage, gauls, germani · plays offline · online with friends</span>
+        <span class="meta">rts · rome vs carthage, gauls, germani · plays offline · online with friends · imperium-maris.com ↗</span>
         <p>Legions, galleys and the tribes beyond the sea. Farm and fish, build a fleet, ship your army across,
           lock shields into a testudo, slip a spy into the enemy's town, and send your ruler out to win the
-          enemy over — but keep the people happy. The online arena at imperium-maris.com runs every match on the
+          enemy over — but keep the people happy. It lives at its own address now; every online match runs on the
           server, so nobody can see through the fog.</p>
         <span class="badge play">playable</span>
       </a>
@@ -437,7 +437,7 @@
     <p class="row">trip&nbsp;&nbsp;&nbsp;→ <a href="/itinerary/">termit.dev/itinerary</a></p>
     <p class="row">steppe→ <a href="/steppe/">termit.dev/steppe</a></p>
     <p class="row">cobalt→ <a href="/cobalt/">termit.dev/cobalt</a></p>
-    <p class="row">rome&nbsp;&nbsp;&nbsp;→ <a href="/imperium/">termit.dev/imperium</a></p>
+    <p class="row">rome&nbsp;&nbsp;&nbsp;→ <a href="https://imperium-maris.com/">imperium-maris.com</a></p>
     <p class="row">f2ce&nbsp;&nbsp;&nbsp;→ <a href="/f2ce/">termit.dev/f2ce</a></p>
   </section>
 
@@ -704,7 +704,7 @@ const COMMANDS = {
     addLine('<span class="dim">insert coin:</span>');
     addLine('  <a href="/steppe/">steppe</a>   <span class="dim">rts on the open steppe</span>');
     addLine('  <a href="/cobalt/">cobalt</a>   <span class="dim">post-atomic base building</span>');
-    addLine('  <a href="/imperium/">rome</a>     <span class="dim">legions and galleys · online at imperium-maris.com</span>');
+    addLine('  <a href="https://imperium-maris.com/">rome</a>     <span class="dim">legions and galleys · imperium-maris.com</span>');
     addLine('  <a href="/f2ce/">f2ce</a>     <span class="dim">fallout 2, your own game files</span>');
     addLine('  <a href="/colony/">colony</a>   <span class="dim">program the termites</span>');
     addLine('  <a href="/pounce/">pounce</a>   <span class="dim">for cats only</span>');
@@ -721,8 +721,8 @@ const COMMANDS = {
   },
   async rome() {
     await typeLine('<span class="dim">launching the triremes…</span>', 22);
-    addLine('→ <a href="/imperium/">termit.dev/imperium</a> <span class="dim">// mare nostrum</span>');
-    setTimeout(() => { location.href = '/imperium/'; }, 1200);
+    addLine('→ <a href="https://imperium-maris.com/">imperium-maris.com</a> <span class="dim">// mare nostrum</span>');
+    setTimeout(() => { location.href = 'https://imperium-maris.com/'; }, 1200);
   },
   async fallout() {
     await typeLine('<span class="dim">booting the wasteland…</span>', 22);
